@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agora - LehcimGames</title>
+<link rel="stylesheet" href="../common/style.css">
+<style>
+  .toolbar .view button { padding: 2px 6px; min-width: 28px; }
+  .toolbar button.on { border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo); background: #e8e8a0; }
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>AGORA</span></div>
+  <div class="toolbar">
+    <button id="new">Nouvelle partie</button>
+    <button id="resign">Abandonner</button>
+    <label title="Celui qui commence a les blancs">Qui commence :
+      <select id="starter"><option value="human">Le joueur commence</option><option value="cpu">L'ordinateur commence</option></select></label>
+    <label>Niveau :
+      <select id="level"><option value="1">Niveau 1</option><option value="2" selected>Niveau 2</option><option value="3">Niveau 3</option></select></label>
+    <button id="setup" title="Poser soi-même les 16 pièces">Nouvelle position</button>
+    <button id="prison" title="Pour les écrans tactiles : le prochain coup sera un prisonnier">Prisonnier</button>
+    <span class="view">Vue :
+      <button id="rotL" title="Tourner (flèche gauche)">⟲</button><button id="rotR" title="Tourner (flèche droite)">⟳</button><button id="tiltU" title="Se pencher par dessus (flèche haut)">▲</button><button id="tiltD" title="Se redresser (flèche bas)">▼</button>
+    </span>
+    <button data-help>Règles</button>
+    <button data-mute></button>
+    <button data-about>A propos</button>
+    <span class="status" id="status"></span>
+  </div>
+  <div class="stage"><canvas class="game" id="game" width="640" height="400"></canvas></div>
+  <p class="hint">Bouton gauche : glisser (ou cliquer la pièce puis la case visée) pour un déplacement ou une prise. Bouton droit (ou bouton <b>Prisonnier</b>) : se constituer prisonnier.
+    Flèches <kbd>←</kbd> <kbd>→</kbd> : tourner autour du plateau, <kbd>↑</kbd> <kbd>↓</kbd> : se pencher.</p>
+</div>
+
+<dialog id="help"><h2>Règles du jeu</h2><div class="body">
+  <h3>But du jeu</h3>
+  <p>Un joueur gagne quand son adversaire ne peut plus jouer, c'est-à-dire quand ce dernier n'a plus de pion ou que ses pions sont tous prisonniers.</p>
+  <h3>Déroulement de la partie</h3>
+  <p>Les blancs commencent. Chaque joueur à tour de rôle doit mouvoir un de ses pions. Dans une pile, seul le pion supérieur peut bouger.
+    Il existe 3 variantes de déplacements : le déplacement simple, la prise, le prisonnier.
+    Tous les déplacements se font d'une case sur une case adjacente.</p>
+  <p><b>Le déplacement simple :</b> le pion choisi est déplacé sur une des cases vides adjacentes (il y en a au plus 8, mais parfois aucune !).</p>
+  <p><b>La prise :</b> votre pion est plus haut ou à la même hauteur que l'adversaire. Vous pouvez prendre. Votre pion est alors placé sur les pièces adverses
+    qui sont retournées et changent ainsi de couleur. La prise n'est jamais obligatoire.</p>
+  <p><b>Le prisonnier :</b> votre pion est plus bas ou à la même hauteur que l'adversaire. Vous pouvez vous constituer prisonnier.
+    Votre pion est alors glissé sans être retourné sous les pièces adverses.</p>
+  <p>Si vos prisonniers deviennent majoritaires dans une pile, les pièces adverses sont automatiquement prises et donc retournées. C'est la révolution !</p>
+  <p>Attention, si vous quittez une pile, vos prisonniers peuvent devenir majoritaires. Dans ce cas, vos propres pions, devenus minoritaires, sont retournés.</p>
+  <h3>Mouvements interdits</h3>
+  <p>Il est interdit de s'empiler sur ses propres pions, sauf dans le cas du pion isolé (pion qui ne touche qu'un seul pion de sa couleur).
+    Tout pion isolé peut s'empiler sur le pion qu'il touche.
+    Le seul moyen de faire une pile avec un pion non isolé est de prendre ou de se constituer prisonnier.</p>
+  <p><b>Remarque :</b> un prisonnier ne peut jamais être pris par les pièces qui le contrôlent. Par ailleurs, il est impossible de le déplacer.</p>
+  <h3>Comment jouer ?</h3>
+  <p>En déplaçant la souris, tu sélectionnes une case qui apparaît en surbrillance. Si la pièce la plus haute sur cette case t'appartient, tu peux la jouer.</p>
+  <p>Pour un déplacement simple ou une prise, clique alors avec le bouton gauche de la souris (la case choisie devient blanche si le coup est possible),
+    puis, en conservant le bouton appuyé, déplace la souris sur la case visée et relâche enfin le bouton.
+    Ta pièce se déplace alors automatiquement si le coup est conforme aux règles.
+    Tu peux aussi cliquer la pièce, puis cliquer la case visée.</p>
+  <p>Pour te constituer prisonnier, le processus est similaire à celui du déplacement mais avec le bouton droit cette fois
+    (sur écran tactile : active d'abord le bouton <b>Prisonnier</b>).</p>
+  <p>Si besoin, tu peux tourner autour du plateau, voire te pencher par-dessus à l'aide des flèches (ou des boutons de la barre « Vue »).</p>
+  <p>Celui qui commence a les blancs. Le bouton « Nouvelle position » te permet d'imposer ta propre position initiale :
+    un clic gauche pose une pièce blanche, un clic droit une pièce noire (cliquer sur une case occupée ajoute la pièce sur la pile).
+    Quand 16 pièces sont mises, le jeu commence. Attention, si tu veux placer toi-même les pièces au départ, choisis celui qui commence avant de cliquer sur « Nouvelle position » !</p>
+  <p><i>Note du portage :</i> une partie est déclarée nulle si la même position se répète trois fois ou après 400 coups.</p>
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<dialog id="about"><h2>A propos de...</h2><div class="body">
+  <p><b>AGORA</b> - Version 2<br>Concepteur : Lehcim Noil<br>Adresse : LehcimNoil@flashyland.com</p>
+  <p><i>Ce jeu est édité avec plateau et pièces en hêtre rose et tilleul par la société STRATE J, Paris.</i></p>
+  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation.</p>
+  <p>Site d'origine (historique) : http://lehcim.flashyland.com</p>
+  <p>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes (textures de bois, fond étoilé, titres) et ses sons d'origine.
+    Le plateau en 3D est redessiné à partir des textures d'origine.</p>
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<script src="../common/lehcim.js"></script>
+<script src="rules.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
