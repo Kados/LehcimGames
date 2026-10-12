@@ -36,7 +36,7 @@ dialog .body h3 { font-size: 15px; margin: 12px 0 4px; }
 dialog .row { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 16px 12px; }
 dialog.msg p { padding: 16px 20px 0; margin: 0; white-space: pre-line; }
 dialog.msg input { margin: 10px 20px 0; width: calc(100% - 40px); font: inherit; }
-kbd { background: #fff; border: 1px solid var(--panel-lo); padding: 0 4px; font-family: inherit; }
+kbd { background: #fff; color: #000; border: 1px solid var(--panel-lo); padding: 0 4px; font-family: inherit; }
 
 /* Launcher */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin: 16px 0 24px; }
