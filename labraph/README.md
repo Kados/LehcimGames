@@ -11,15 +11,15 @@ Extrait de `labraph.zip`. Jeu d'action en labyrinthe pour 1 joueur : détruire t
 | `Lisez-moi.txt` | 425 o | Mode d'emploi en français : `LabRaph.exe` et `LabRaph.tut` doivent rester ensemble. |
 | `WAVEMIX.INI`, `WAVMIX16.DLL`, `WING.DLL` | | Fichiers de support partagés (voir plus bas). |
 
-> Le jeu cherche aussi une musique `LABMUS.MID`, qui n'est pas fournie dans l'archive.
+> Le formulaire du jeu mentionne une musique `LABMUS.MID` (non fournie), mais la musique des niveaux vient des sons 10 et 11 intégrés à l'exécutable.
 
 ## Règles (résumé de l'aide du jeu)
 
 - À chaque niveau, il faut détruire tous les globules jaunes, puis sortir du labyrinthe. Le temps est limité et aucun globule jaune ne doit sortir avant toi.
 - On détruit les globules au contact (2 points) ou en leur tirant dessus (1 point).
-- Les serpents rouges tuent au contact et te poursuivent **à travers** les murs ; tu peux leur tirer dessus s'il te reste des balles. Tu gagnes au moins une balle par niveau, 5 au maximum.
+- Les serpents rouges tuent au contact ; ils se déplacent dans les couloirs mais, à chaque carrefour, prennent la direction qui les rapproche du vaisseau en ligne droite sans tenir compte des murs (un mur peut donc les égarer). Tu peux leur tirer dessus s'il te reste des balles. On commence avec 2 balles, on en gagne au moins une par niveau, 5 au maximum.
 - Les oeufs s'ouvrent quand tu t'approches ; un oeuf de serpent te détecte de plus loin qu'un oeuf de globule.
-- Le labyrinthe devient invisible pendant les 20 dernières secondes d'un niveau.
+- Pendant les 20 dernières secondes d'un niveau, les murs s'effacent petit à petit.
 - Une fois par niveau, tu peux poser une barrière provisoire de 3 secondes pour bloquer la sortie.
 - **Commandes** : flèches pour se déplacer, `Espace` pour tirer, `Entrée` pour la barrière, `W` pour rester sur place (avec les flèches pour pivoter).
 

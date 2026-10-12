@@ -23,15 +23,15 @@
 </head>
 <body>
 <div class="window">
-  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>LabRaph</span></div>
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><a href="nouveau/" style="margin-right:16px">Nouvelle version ▶</a><span>LabRaph</span></div>
   <div class="toolbar">
-    <button id="new">Nouvelle partie</button>
+    <button id="new">Nouvelle Partie</button>
     <button id="pause">Pause</button>
     <button id="abandon">Abandonner</button>
     <button id="showScores">Scores</button>
-    <button data-help>Règles</button>
+    <button data-help>Aide</button>
+    <button data-about>A propos de...</button>
     <button data-mute></button>
-    <button data-about>A propos</button>
     <span class="status" id="status"></span>
   </div>
   <div class="stage"><canvas class="game" id="game" width="620" height="400"></canvas></div>
@@ -46,26 +46,23 @@
       <button data-k="barrier">Barrière</button>
     </div>
   </div>
-  <p class="hint">Flèches : se déplacer. <kbd>Espace</kbd> : tirer. <kbd>Entrée</kbd> : barrière devant la sortie (une fois par niveau, 3 secondes). <kbd>W</kbd> maintenue + flèches : pivoter sur place. <kbd>P</kbd> : pause.</p>
+  <p class="hint">Flèches : se déplacer. <kbd>Espace</kbd> : tirer. <kbd>Entrée</kbd> : barrière devant la sortie (une fois par niveau, 3 secondes). <kbd>W</kbd> maintenue + flèches : pivoter sur place. <kbd>P</kbd> : pause (ajout de cette version).</p>
 </div>
 
-<dialog id="help"><h2>Règles du jeu LabRaph</h2><div class="body">
-  <p>A chaque niveau, tu dois sortir du labyrinthe après avoir détruit tous les globules jaunes.</p>
-  <p>Tu les élimines par contact ou en leur tirant dessus.</p>
-  <p>Attention aux serpents rouges ! S'ils te touchent, tu meurs. Heureusement, s'il te reste des balles, tu peux te défendre.</p>
-  <p>Par ailleurs, tu remarqueras que le labyrinthe devient invisible les 20 dernières secondes, ce qui ne te facilite pas la tâche...</p>
-  <p>Ton but est de réaliser le meilleur score : un globule détruit par contact rapporte deux points, un globule détruit par balle rapporte un seul point.</p>
-  <p>Ton temps est limité et de plus, aucun globule jaune ne doit sortir avant toi, mais tu peux bloquer leur sortie par une barrière provisoire de 3 secondes une fois par niveau.</p>
-  <p>A chaque niveau, tu obtiens au moins une balle supplémentaire mais le total de tes balles est plafonné à 5. Utilise-les avec parcimonie !</p>
-  <p><i>Remarque 1 :</i> si tu t'approches d'un oeuf, il s'ouvre. Un oeuf de serpent te détecte de plus loin qu'un oeuf de globule, ce qui permet de les distinguer.</p>
-  <p><i>Remarque 2 :</i> les serpents rouges te poursuivent sans tenir compte des murs : ils volent au-dessus du labyrinthe en ligne droite vers toi. Un mur entre toi et un serpent ne te protège donc pas ; c'est la distance à vol d'oiseau qui compte.</p>
-  <h3>Touches</h3>
-  <p>Haut : flèche <kbd>Haut</kbd> &nbsp; Droite : flèche <kbd>Droite</kbd> &nbsp; Bas : flèche <kbd>Bas</kbd> &nbsp; Gauche : flèche <kbd>Gauche</kbd><br>
-  Tir : touche <kbd>Espace</kbd> &nbsp; Barrière : touche <kbd>Entrée</kbd><br>
-  Immobilisation : touche <kbd>W</kbd> (à presser en même temps que les flèches pour pivoter sur place).<br>
-  Pause : touche <kbd>P</kbd>.</p>
-  <h3>Précisions de cette version</h3>
-  <p>Les labyrinthes sont tirés au hasard ; ils grandissent tous les deux niveaux (les cases rapetissent) et les oeufs de serpents sont de plus en plus nombreux. La sortie est une ouverture dans le mur extérieur ; elle ne te laisse passer qu'une fois tous les globules détruits (y compris ceux encore dans leur oeuf). Si tu meurs, si le temps est écoulé ou si un globule s'échappe, tu perds une vie et le niveau recommence dans un nouveau labyrinthe.</p>
+<dialog id="help"><h2>AIDE</h2><div class="body">
+  <p>A chaque niveau , tu dois sortir du labyrinthe après avoir détruit tous les globules jaunes .<br>
+  Tu les élimines par contact ou en leur tirant dessus .</p>
+  <p>Ton temps est limité et de plus , aucun globule jaune ne doit sortir avant toi , mais tu peux bloquer leur sortie par une barrière provisoire de 3 secondes une fois par niveau .</p>
+  <p>Attention aux serpents rouges ! S'ils te touchent , tu meurs . Heureusement , s'il te reste des balles , tu peux te défendre .</p>
+  <p>A chaque niveau , tu obtiens au moins une balle supplémentaire mais le total de tes balles est plafonné à 5 . Utilise les avec parcimonie !</p>
+  <p>Par ailleurs , tu remarqueras que le labyrinthe devient invisible les 20 dernières secondes , ce qui ne te facilite pas la tâche ...</p>
+  <p>Ton but est de réaliser le meilleur score : un globule détruit par contact rapporte deux points ,un globule détruit par balle rapporte un seul point .</p>
+  <p>TOUCHES :<br>haut : Flèche "Haut" &nbsp; droite : Flèche "Droite" &nbsp; bas : Flèche "Bas" &nbsp; gauche : Flèche "Gauche"<br>
+  tir : Touche "Espace" &nbsp; barrière : Touche "Entrée"<br>
+  immobilsation : Touche w ( à presser en même temps que les flèches pour pivoter sur place)</p>
+  <p>Remarque 1 : si tu t'approches d'un oeuf , il s'ouvre. Un oeuf de serpent te détecte de plus loin qu'un oeuf de globule , ce qui permet de les distinguer .</p>
+  <p><img src="assets/aide-remarque2.png" width="100" height="100" alt="Exemple : serpent, positions A et B" style="float:left;margin:0 10px 4px 0;image-rendering:pixelated">
+  Remarque 2 : les serpents rouges te pousuivent sans tenir compte des murs, donc, dans l' exemple ci-contre, si tu es en B, tu échappes au serpent alors que si tu es en A, tu es mal parti!</p>
 </div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
 <dialog id="scores"><h2>La partie est terminée .</h2><div class="body">
@@ -74,9 +71,9 @@
 </div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
 <dialog id="about"><h2>A propos de...</h2><div class="body">
-  <p><b>LabRaph</b><br>Concepteur : Lehcim Noil</p>
-  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation.</p>
-  <p>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes et ses sons d'origine. Les règles ont été reconstituées à partir du texte d'aide original.</p>
+  <p><b>LabRaph</b><br><b>Concepteur :Lehcim Noil</b><br><b>Version 2</b><br>Musique :Nivek</p>
+  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation .</p>
+  <p>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes et ses sons d'origine. Les règles, les niveaux et le comportement des créatures ont été relevés dans le programme original.</p>
 </div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
 <script src="../common/lehcim.js"></script>
