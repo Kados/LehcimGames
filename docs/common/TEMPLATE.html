@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GAME NAME - LehcimGames</title>
+<link rel="stylesheet" href="../common/style.css">
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>GAME NAME</span></div>
+  <div class="toolbar">
+    <button id="new">Nouvelle partie</button>
+    <!-- game specific options (selects for level / mode ...) -->
+    <button data-help>Règles</button>
+    <button data-mute></button>
+    <button data-about>A propos</button>
+    <span class="status" id="status"></span>
+  </div>
+  <div class="stage"><canvas class="game" id="game" width="640" height="480"></canvas></div>
+  <p class="hint">Controls summary...</p>
+</div>
+
+<dialog id="help"><h2>Règles du jeu</h2><div class="body">
+  <!-- Original French rules text from the .exe, cleaned up -->
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<dialog id="about"><h2>A propos de...</h2><div class="body">
+  <p><b>GAME NAME</b><br>Concepteur : Lehcim Noil</p>
+  <p>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes et ses sons d'origine.</p>
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<script src="../common/lehcim.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

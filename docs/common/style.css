@@ -1,0 +1,48 @@
+/* Shared style for the LehcimGames browser ports: a light nod to Windows 3.1. */
+:root {
+  --bg: #0b0d1a;
+  --panel: #c0c0c0;
+  --panel-hi: #ffffff;
+  --panel-lo: #808080;
+  --ink: #000;
+  --title: #000080;
+  --title-ink: #fff;
+  --page-ink: #e8e8f0;
+  --accent: #ffd34d;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--page-ink); font: 15px/1.45 "MS Sans Serif", Tahoma, Verdana, system-ui, sans-serif; }
+a { color: var(--accent); }
+
+.window { max-width: 1060px; margin: 12px auto; padding: 0 16px; }
+.titlebar { display: flex; align-items: center; gap: 8px; background: linear-gradient(90deg, var(--title), #1084d0); color: var(--title-ink); padding: 4px 8px; font-weight: bold; border: 2px solid var(--panel); border-bottom: 0; }
+.titlebar a { color: var(--title-ink); text-decoration: none; }
+.titlebar .grow { flex: 1; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--panel); color: var(--ink); padding: 6px; border: 2px solid var(--panel); border-top: 0; }
+.toolbar label { display: inline-flex; align-items: center; gap: 4px; }
+.toolbar .status { margin-left: auto; font-weight: bold; padding: 2px 8px; }
+button, select { font: inherit; color: var(--ink); background: var(--panel); border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi); padding: 2px 10px; cursor: pointer; }
+button:active { border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo); }
+select { background: #fff; padding: 1px 4px; }
+.stage { background: #000; border: 2px solid var(--panel); border-top: 0; display: flex; justify-content: center; overflow: hidden; touch-action: none; }
+canvas.game { display: block; image-rendering: pixelated; max-width: 100%; }
+.hint { color: #a9acc8; font-size: 13px; margin: 8px 2px; }
+
+dialog { max-width: min(680px, calc(100vw - 32px)); background: var(--panel); color: var(--ink); border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi); padding: 0; }
+dialog::backdrop { background: rgba(0, 0, 0, .55); }
+dialog h2 { margin: 0; background: var(--title); color: var(--title-ink); font-size: 15px; padding: 4px 8px; }
+dialog .body { padding: 10px 16px; max-height: 70vh; overflow: auto; }
+dialog .body h3 { font-size: 15px; margin: 12px 0 4px; }
+dialog .row { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 16px 12px; }
+dialog.msg p { padding: 16px 20px 0; margin: 0; white-space: pre-line; }
+dialog.msg input { margin: 10px 20px 0; width: calc(100% - 40px); font: inherit; }
+kbd { background: #fff; border: 1px solid var(--panel-lo); padding: 0 4px; font-family: inherit; }
+
+/* Launcher */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin: 16px 0 24px; }
+.card { display: block; background: var(--panel); color: var(--ink); text-decoration: none; border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi); }
+.card:hover { outline: 2px solid var(--accent); }
+.card .thumb { height: 140px; background: #000 center/cover no-repeat; image-rendering: pixelated; }
+.card h3 { margin: 0; padding: 6px 10px 0; font-size: 16px; color: var(--title); }
+.card p { margin: 0; padding: 2px 10px 10px; font-size: 13px; }
+@media (max-width: 520px) { .toolbar .status { margin-left: 0; width: 100%; } }
