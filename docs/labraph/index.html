@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LabRaph - LehcimGames</title>
+<link rel="stylesheet" href="../common/style.css">
+<style>
+  /* On-screen controls for touch screens (hidden with a real keyboard/mouse). */
+  .pad { display: none; justify-content: center; gap: 18px; flex-wrap: wrap; margin: 8px 0; user-select: none; -webkit-user-select: none; }
+  .pad .cross { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 48px); gap: 4px; }
+  .pad .acts { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+  .pad button { touch-action: none; font-size: 18px; padding: 0; }
+  .pad .acts button { min-width: 110px; height: 44px; font-size: 15px; }
+  .pad button.on { border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo); background: #a0a0a0; }
+  @media (pointer: coarse) { .pad { display: flex; } }
+  #scores table { border-collapse: collapse; margin: 4px auto 8px; font-family: "Times New Roman", serif; font-size: 17px; }
+  #scores th { text-decoration: underline; padding: 2px 18px; }
+  #scores td { padding: 2px 18px; }
+  #scores td:last-child { text-align: right; }
+  #scores .cap { text-align: center; font-family: "Times New Roman", serif; font-style: italic; font-size: 20px; margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>LabRaph</span></div>
+  <div class="toolbar">
+    <button id="new">Nouvelle partie</button>
+    <button id="pause">Pause</button>
+    <button id="abandon">Abandonner</button>
+    <button id="showScores">Scores</button>
+    <button data-help>Règles</button>
+    <button data-mute></button>
+    <button data-about>A propos</button>
+    <span class="status" id="status"></span>
+  </div>
+  <div class="stage"><canvas class="game" id="game" width="620" height="400"></canvas></div>
+  <div class="pad" id="pad">
+    <div class="cross">
+      <span></span><button data-k="up">▲</button><span></span>
+      <button data-k="left">◀</button><button data-k="pivot" title="Immobilisation">W</button><button data-k="right">▶</button>
+      <span></span><button data-k="down">▼</button><span></span>
+    </div>
+    <div class="acts">
+      <button data-k="fire">Tir</button>
+      <button data-k="barrier">Barrière</button>
+    </div>
+  </div>
+  <p class="hint">Flèches : se déplacer. <kbd>Espace</kbd> : tirer. <kbd>Entrée</kbd> : barrière devant la sortie (une fois par niveau, 3 secondes). <kbd>W</kbd> maintenue + flèches : pivoter sur place. <kbd>P</kbd> : pause.</p>
+</div>
+
+<dialog id="help"><h2>Règles du jeu LabRaph</h2><div class="body">
+  <p>A chaque niveau, tu dois sortir du labyrinthe après avoir détruit tous les globules jaunes.</p>
+  <p>Tu les élimines par contact ou en leur tirant dessus.</p>
+  <p>Attention aux serpents rouges ! S'ils te touchent, tu meurs. Heureusement, s'il te reste des balles, tu peux te défendre.</p>
+  <p>Par ailleurs, tu remarqueras que le labyrinthe devient invisible les 20 dernières secondes, ce qui ne te facilite pas la tâche...</p>
+  <p>Ton but est de réaliser le meilleur score : un globule détruit par contact rapporte deux points, un globule détruit par balle rapporte un seul point.</p>
+  <p>Ton temps est limité et de plus, aucun globule jaune ne doit sortir avant toi, mais tu peux bloquer leur sortie par une barrière provisoire de 3 secondes une fois par niveau.</p>
+  <p>A chaque niveau, tu obtiens au moins une balle supplémentaire mais le total de tes balles est plafonné à 5. Utilise-les avec parcimonie !</p>
+  <p><i>Remarque 1 :</i> si tu t'approches d'un oeuf, il s'ouvre. Un oeuf de serpent te détecte de plus loin qu'un oeuf de globule, ce qui permet de les distinguer.</p>
+  <p><i>Remarque 2 :</i> les serpents rouges te poursuivent sans tenir compte des murs : ils volent au-dessus du labyrinthe en ligne droite vers toi. Un mur entre toi et un serpent ne te protège donc pas ; c'est la distance à vol d'oiseau qui compte.</p>
+  <h3>Touches</h3>
+  <p>Haut : flèche <kbd>Haut</kbd> &nbsp; Droite : flèche <kbd>Droite</kbd> &nbsp; Bas : flèche <kbd>Bas</kbd> &nbsp; Gauche : flèche <kbd>Gauche</kbd><br>
+  Tir : touche <kbd>Espace</kbd> &nbsp; Barrière : touche <kbd>Entrée</kbd><br>
+  Immobilisation : touche <kbd>W</kbd> (à presser en même temps que les flèches pour pivoter sur place).<br>
+  Pause : touche <kbd>P</kbd>.</p>
+  <h3>Précisions de cette version</h3>
+  <p>Les labyrinthes sont tirés au hasard ; ils grandissent tous les deux niveaux (les cases rapetissent) et les oeufs de serpents sont de plus en plus nombreux. La sortie est une ouverture dans le mur extérieur ; elle ne te laisse passer qu'une fois tous les globules détruits (y compris ceux encore dans leur oeuf). Si tu meurs, si le temps est écoulé ou si un globule s'échappe, tu perds une vie et le niveau recommence dans un nouveau labyrinthe.</p>
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<dialog id="scores"><h2>La partie est terminée .</h2><div class="body">
+  <p class="cap">MEILLEURS SCORES</p>
+  <table><thead><tr><th>Nom du joueur</th><th>Score</th></tr></thead><tbody></tbody></table>
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<dialog id="about"><h2>A propos de...</h2><div class="body">
+  <p><b>LabRaph</b><br>Concepteur : Lehcim Noil</p>
+  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation.</p>
+  <p>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes et ses sons d'origine. Les règles ont été reconstituées à partir du texte d'aide original.</p>
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<script src="../common/lehcim.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

@@ -7,7 +7,7 @@ Extracted from `labraph.zip`. Single-player maze action game: clear each labyrin
 | File | Size | Role |
 |---|---|---|
 | `LabRaph.exe` | 1.4 MB | The game (16-bit Windows 3.x executable, Borland Delphi 1). Graphics and sounds are embedded in the executable (no `.LIO` file). |
-| `LabRaph.tut` | 160 B | **High-score table** (5 entries). Obfuscated: names are stored with bytes XOR-ed with `0xFF`, interleaved with filler bytes; scores are at the end. Default content: Pro 60, Expert 48, Amateur 36, Débutant 24, and a 5th entry with 12 points. Rewritten when you enter the best scores. |
+| `LabRaph.tut` | 160 B | **High-score table** (5 entries). Obfuscated: names are stored with bytes XOR-ed with `0xFF`, interleaved with filler bytes; scores are at the end. Default content: Pro 60, Expert 48, Amateur 36, Débutant 24, Gromové 12. Rewritten when you enter the best scores. |
 | `Lisez-moi.txt` | 425 B | French readme: `LabRaph.exe` and `LabRaph.tut` must stay together. |
 | `WAVEMIX.INI`, `WAVMIX16.DLL`, `WING.DLL` | | Shared support files (see below). |
 
