@@ -19,6 +19,7 @@ Extrait de `agora.zip`. Jeu de stratégie abstrait pour 2 joueurs avec des pièc
   - **Prisonnier** : si ta pile est plus basse ou de même hauteur, tu peux glisser ton pion sous la pile adverse.
 - **Révolution** : si les prisonniers deviennent majoritaires dans une pile, les pièces adverses sont prises et retournées.
 - **Commandes** : glisser avec le bouton gauche pour un déplacement ou une prise, avec le bouton droit pour se constituer prisonnier. Les flèches tournent et inclinent la vue du plateau.
+- Fonctionnement vérifié dans le jeu d'origine : le plateau de 6x6 est en gradins (tour extérieur, anneau du milieu, carré central de 2x2 de plus en plus bas) et la hauteur comparée pour une prise ou un prisonnier est celle de la case plus celle de la pile. Au départ, chaque camp occupe toute sa dernière rangée plus les deux cases devant ses coins. Un pion est isolé s'il ne touche qu'une seule pièce de sa couleur parmi ses 8 voisines (prisonniers compris).
 - Menu **Nouvelle Position** : placer soi-même la position de départ (clic gauche = pièce blanche, clic droit = pièce noire ; la partie commence quand 16 pièces sont posées). Choisir qui commence avant de cliquer.
 
 ## Version navigateur

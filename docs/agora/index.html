@@ -6,76 +6,80 @@
 <title>Agora - LehcimGames</title>
 <link rel="stylesheet" href="../common/style.css">
 <style>
-  .toolbar .view button { padding: 2px 6px; min-width: 28px; }
+  .toolbar .view button { padding: 2px 6px; min-width: 28px; touch-action: none; }
   .toolbar button.on { border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo); background: #e8e8a0; }
+  #help .body p, #howtoDlg .body p { margin: 4px 0; }
 </style>
 </head>
 <body>
 <div class="window">
-  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>AGORA</span></div>
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><a href="nouveau/" style="margin-right:16px">Nouvelle version ▶</a><span>AGORA</span></div>
   <div class="toolbar">
-    <button id="new">Nouvelle partie</button>
+    <button id="new">Nouvelle Partie</button>
     <button id="resign">Abandonner</button>
-    <label title="Celui qui commence a les blancs">Qui commence :
+    <label title="Celui qui commence a les blancs">Qui commence
       <select id="starter"><option value="human">Le joueur commence</option><option value="cpu">L'ordinateur commence</option></select></label>
-    <label>Niveau :
-      <select id="level"><option value="1">Niveau 1</option><option value="2" selected>Niveau 2</option><option value="3">Niveau 3</option></select></label>
-    <button id="setup" title="Poser soi-même les 16 pièces">Nouvelle position</button>
-    <button id="prison" title="Pour les écrans tactiles : le prochain coup sera un prisonnier">Prisonnier</button>
+    <label title="Niveau de jeu de l'ordinateur">Niveau
+      <select id="level"><option value="1" selected>Niveau 1</option><option value="2">Niveau 2</option><option value="3">Niveau 3</option></select></label>
+    <button id="setup" title="Poser soi-même les 16 pièces">Nouvelle Position</button>
+    <button data-help>Règles</button>
+    <button id="howto">Comment jouer ?</button>
+    <button data-about>A propos de...</button>
+    <button data-mute></button>
+    <button id="prison" title="Pour les écrans tactiles : le prochain coup sera un prisonnier (en Nouvelle Position : pièce noire)">Bouton droit</button>
     <span class="view">Vue :
       <button id="rotL" title="Tourner (flèche gauche)">⟲</button><button id="rotR" title="Tourner (flèche droite)">⟳</button><button id="tiltU" title="Se pencher par dessus (flèche haut)">▲</button><button id="tiltD" title="Se redresser (flèche bas)">▼</button>
     </span>
-    <button data-help>Règles</button>
-    <button data-mute></button>
-    <button data-about>A propos</button>
     <span class="status" id="status"></span>
   </div>
-  <div class="stage"><canvas class="game" id="game" width="640" height="400"></canvas></div>
-  <p class="hint">Bouton gauche : glisser (ou cliquer la pièce puis la case visée) pour un déplacement ou une prise. Bouton droit (ou bouton <b>Prisonnier</b>) : se constituer prisonnier.
-    Flèches <kbd>←</kbd> <kbd>→</kbd> : tourner autour du plateau, <kbd>↑</kbd> <kbd>↓</kbd> : se pencher.</p>
+  <div class="stage"><canvas class="game" id="game" width="598" height="375"></canvas></div>
+  <p class="hint">Bouton gauche : glisser la pièce sur la case visée pour un déplacement ou une prise. Bouton droit : se constituer prisonnier.
+    Flèches <kbd>←</kbd> <kbd>→</kbd> : tourner autour du plateau, <kbd>↑</kbd> <kbd>↓</kbd> : se pencher.
+    Sur écran tactile : touche la pièce puis la case visée ; le bouton <b>Bouton droit</b> remplace le clic droit.</p>
 </div>
 
-<dialog id="help"><h2>Règles du jeu</h2><div class="body">
-  <h3>But du jeu</h3>
-  <p>Un joueur gagne quand son adversaire ne peut plus jouer, c'est-à-dire quand ce dernier n'a plus de pion ou que ses pions sont tous prisonniers.</p>
-  <h3>Déroulement de la partie</h3>
-  <p>Les blancs commencent. Chaque joueur à tour de rôle doit mouvoir un de ses pions. Dans une pile, seul le pion supérieur peut bouger.
-    Il existe 3 variantes de déplacements : le déplacement simple, la prise, le prisonnier.
-    Tous les déplacements se font d'une case sur une case adjacente.</p>
-  <p><b>Le déplacement simple :</b> le pion choisi est déplacé sur une des cases vides adjacentes (il y en a au plus 8, mais parfois aucune !).</p>
-  <p><b>La prise :</b> votre pion est plus haut ou à la même hauteur que l'adversaire. Vous pouvez prendre. Votre pion est alors placé sur les pièces adverses
-    qui sont retournées et changent ainsi de couleur. La prise n'est jamais obligatoire.</p>
-  <p><b>Le prisonnier :</b> votre pion est plus bas ou à la même hauteur que l'adversaire. Vous pouvez vous constituer prisonnier.
-    Votre pion est alors glissé sans être retourné sous les pièces adverses.</p>
-  <p>Si vos prisonniers deviennent majoritaires dans une pile, les pièces adverses sont automatiquement prises et donc retournées. C'est la révolution !</p>
-  <p>Attention, si vous quittez une pile, vos prisonniers peuvent devenir majoritaires. Dans ce cas, vos propres pions, devenus minoritaires, sont retournés.</p>
-  <h3>Mouvements interdits</h3>
-  <p>Il est interdit de s'empiler sur ses propres pions, sauf dans le cas du pion isolé (pion qui ne touche qu'un seul pion de sa couleur).
-    Tout pion isolé peut s'empiler sur le pion qu'il touche.
-    Le seul moyen de faire une pile avec un pion non isolé est de prendre ou de se constituer prisonnier.</p>
-  <p><b>Remarque :</b> un prisonnier ne peut jamais être pris par les pièces qui le contrôlent. Par ailleurs, il est impossible de le déplacer.</p>
-  <h3>Comment jouer ?</h3>
-  <p>En déplaçant la souris, tu sélectionnes une case qui apparaît en surbrillance. Si la pièce la plus haute sur cette case t'appartient, tu peux la jouer.</p>
-  <p>Pour un déplacement simple ou une prise, clique alors avec le bouton gauche de la souris (la case choisie devient blanche si le coup est possible),
-    puis, en conservant le bouton appuyé, déplace la souris sur la case visée et relâche enfin le bouton.
-    Ta pièce se déplace alors automatiquement si le coup est conforme aux règles.
-    Tu peux aussi cliquer la pièce, puis cliquer la case visée.</p>
-  <p>Pour te constituer prisonnier, le processus est similaire à celui du déplacement mais avec le bouton droit cette fois
-    (sur écran tactile : active d'abord le bouton <b>Prisonnier</b>).</p>
-  <p>Si besoin, tu peux tourner autour du plateau, voire te pencher par-dessus à l'aide des flèches (ou des boutons de la barre « Vue »).</p>
-  <p>Celui qui commence a les blancs. Le bouton « Nouvelle position » te permet d'imposer ta propre position initiale :
-    un clic gauche pose une pièce blanche, un clic droit une pièce noire (cliquer sur une case occupée ajoute la pièce sur la pile).
-    Quand 16 pièces sont mises, le jeu commence. Attention, si tu veux placer toi-même les pièces au départ, choisis celui qui commence avant de cliquer sur « Nouvelle position » !</p>
-  <p><i>Note du portage :</i> une partie est déclarée nulle si la même position se répète trois fois ou après 400 coups.</p>
+<dialog id="help"><h2>Règles</h2><div class="body">
+  <p>BUT DU JEU: Un joueur gagne quand son adversaire ne peut plus jouer, c'est à dire quand ce dernier n'a plus de pion ou que ses pions sont tous prisonniers.</p>
+  <p>DEROULEMENT DE LA PARTIE: Les blancs commencent. Chaque joueur à tour de rôle doit mouvoir un de ses pions. Dans une pile, seul le pion supérieur peut bouger. Il existe 3 variantes de déplacements: Le déplacement simple, La prise, Le prisonnier.</p>
+  <p>Tous les déplacements se font d'une case sur une case adjacente.</p>
+  <p>LE DEPLACEMENT SIMPLE: le pion choisi est déplacé sur une des cases vides adjacentes ( il y en a au plus 8, mais parfois aucune !).</p>
+  <p>LA PRISE: Votre pion est plus haut ou à la même hauteur que l'adversaire. Vous pouvez prendre. Votre pion est alors placé sur les pièces adverses qui sont retournées et changent ainsi de couleur. La prise n'est jamais obligatoire.</p>
+  <p>LE PRISONNIER: Votre pion est plus bas ou à la même hauteur que l'adversaire. Vous pouvez vous constituer prisonnier. Votre pion est alors glissé sans être retourné sous les pièces adverses.</p>
+  <p>Si vos prisonniers deviennent majoritaires dans une pile, les pièces adverses sont automatiquement prises et donc retournées. C'est la révolution!</p>
+  <p>Attention, si vous quitez une pile, vos prisonniers peuvent devenir majoritaires. Dans ce cas, vos propres pions, devenus minoritaires, sont retournés.</p>
+  <p>MOUVEMENTS INTERDITS: Il est interdit de s'empiler sur ses propres pions, sauf dans le cas du pion isolé (pion qui ne touche qu'un seul pion de sa couleur). Tout pion isolé peut s'empiler sur le pion qu'il touche.</p>
+  <p>Le seul moyen de faire une pile avec un pion non isolé est de prendre ou de se constituer prisonnier.</p>
+  <p>REMARQUE: Un prisonnier ne peut jamais être pris par les pièces qui le contrôlent. Par ailleurs, il est impossible de le déplacer.</p>
+  <h3>Précisions (observées sur le jeu d'origine)</h3>
+  <ul>
+    <li>Le plateau est en gradins : la bordure est 3 épaisseurs de pion plus haute que l'anneau intermédiaire, lui-même 2 épaisseurs plus haut que le carré central.
+      La hauteur qui compte pour la prise et le prisonnier est la hauteur réelle du sommet de la pile (niveau de la case plus nombre de pions).</li>
+    <li>Pour savoir si un pion est isolé, on compte tous les pions de sa couleur sur les cases voisines, y compris ceux qui sont prisonniers dans une pile.</li>
+    <li>Au départ, chaque camp a 8 pions : toute sa rangée du fond et les deux cases devant ses coins. Tes pions sont toujours devant toi.</li>
+  </ul>
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<dialog id="howtoDlg"><h2>Comment jouer ?</h2><div class="body">
+  <p>En déplaçant la souris, tu sélectionnes une case qui apparait surbrillée. Si la pièce la plus haute sur cette case t'appartient, tu peux la jouer.</p>
+  <p>Pour  un déplacement simple ou une prise, clique alors avec le bouton gauche de la souris (la case choisie devient blanche si le coup est possible), puis, en conservant le bouton appuyé, déplace la souris sur la case visée et relâche enfin le bouton.</p>
+  <p>Ta pièce se déplace alors automatiquement si le coup est conforme aux règles.</p>
+  <p>Pour te constituer prisonnier, le processus est similaire à celui du déplacement  mais avec le bouton droit cette fois.</p>
+  <p>Si besoin, tu peux tourner autour du plateau, voire  te pencher par dessus à l'aide des flèches.</p>
+  <p>L' item "Nouvelle Position" te permet d'imposer ta propre position initiale, un clic gauche pose une pièce blanche, un clic droit une pièce noire. Quand 16 pièces sont mises, le jeu commence.</p>
+  <p>Attention, si tu veux placer toi-même les pièces au départ, choisis celui qui commence avant de cliquer sur Nouvelle Position !</p>
+  <p><i>Sur écran tactile :</i> touche ta pièce puis la case visée ; active le bouton « Bouton droit » pour un prisonnier (ou, en Nouvelle Position, pour poser une pièce noire). Les boutons de « Vue » remplacent les flèches.</p>
 </div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
 <dialog id="about"><h2>A propos de...</h2><div class="body">
-  <p><b>AGORA</b> - Version 2<br>Concepteur : Lehcim Noil<br>Adresse : LehcimNoil@flashyland.com</p>
-  <p><i>Ce jeu est édité avec plateau et pièces en hêtre rose et tilleul par la société STRATE J, Paris.</i></p>
-  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation.</p>
-  <p>Site d'origine (historique) : http://lehcim.flashyland.com</p>
-  <p>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes (textures de bois, fond étoilé, titres) et ses sons d'origine.
-    Le plateau en 3D est redessiné à partir des textures d'origine.</p>
+  <p><b>AGORA</b></p>
+  <p>Version 2</p>
+  <p>Concepteur :Lehcim Noil</p>
+  <p>Adresse :LehcimNoil@flashyland.com</p>
+  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation .</p>
+  <p>Configuration  conseillée :256 couleurs -640*480</p>
+  <p>Mises à jour et autres jeux sur le site:    http://lehcim.flashyland.com</p>
+  <p>Ce jeu est édité avec plateau et pièces en hêtre rose et tilleul par la société :  STRATE  &amp; J , 7 Bld Malesherbes 78008 PARIS</p>
+  <p><i>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes et ses sons d'origine ; le plateau en 3D est redessiné à partir des textures d'origine.</i></p>
 </div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
 <script src="../common/lehcim.js"></script>

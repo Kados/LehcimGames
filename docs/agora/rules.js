@@ -1,6 +1,13 @@
 /*
  * Agora - rules engine and computer player (no DOM, also loadable from node).
- * Board: 6x6 squares, index = row*6 + col. Colours: 0 = white, 1 = black.
+ * Board: 6x6 squares, index = row*6 + col (row 0 = far side, row 5 = the player's side).
+ * Colours: 0 = white, 1 = black.
+ *
+ * The board is terraced like the original (observed in the real program):
+ * the outer ring is the highest level, the middle ring is 3 piece thicknesses
+ * lower and the central 2x2 square 2 more thicknesses lower. "Height" in the
+ * capture / prisoner rules is the real height of the top of a stack:
+ * LEVEL[square] + number of pieces (in piece thicknesses).
  *
  * A stack never holds more than two segments: the controlling pieces on top
  * (colour col[i], count top[i]) and, underneath, the prisoners of the other
@@ -18,6 +25,13 @@
 
   var N = 6, SIZE = N * N;
   var SIMPLE = 0, STACK = 1, CAPTURE = 2, PRISON = 3; // move kinds
+
+  // Height of each square's floor, in piece thicknesses: outer ring 5, middle ring 2, centre 0.
+  var LEVEL = [];
+  for (var q = 0; q < N * N; q++) {
+    var ring = Math.min((q / N) | 0, q % N, N - 1 - ((q / N) | 0), N - 1 - q % N);
+    LEVEL.push(ring === 0 ? 5 : ring === 1 ? 2 : 0);
+  }
 
   // Neighbour lists (8 directions).
   var NEIGH = [];
@@ -74,16 +88,15 @@
     return p;
   };
 
-  // Default opening (a reconstruction, see README notes): the 16 border squares
-  // that are not corners, each side reading B W W B or W B B W.
-  function initial() {
+  // Opening of the original: each side has its 6 pieces on its back row plus the
+  // two squares in front of its corners. `front` is the colour placed on rows 4-5
+  // (the player's side, near the camera); the other colour gets rows 0-1.
+  function initial(front) {
+    front = front || 0;
     var p = new Pos();
-    var rows = { 0: [0, 1, 1, 0], 5: [1, 0, 0, 1] };     // back row (row 0) and front row (row 5), cols 1..4
-    var cols = { 0: [0, 1, 1, 0], 5: [1, 0, 0, 1] };     // left col (col 0) and right col (col 5), rows 1..4
-    for (var k = 0; k < 4; k++) {
-      put(p, 0 * N + k + 1, rows[0][k]); put(p, 5 * N + k + 1, rows[5][k]);
-      put(p, (k + 1) * N + 0, cols[0][k]); put(p, (k + 1) * N + 5, cols[5][k]);
-    }
+    for (var c = 0; c < N; c++) { put(p, 5 * N + c, front); put(p, c, 1 - front); }
+    put(p, 4 * N, front); put(p, 4 * N + 5, front);
+    put(p, N, 1 - front); put(p, N + 5, 1 - front);
     return p;
   }
   function put(p, i, c) { p.col[i] = c; p.top[i] = 1; p.bot[i] = 0; }
@@ -95,25 +108,31 @@
   function mTo(m) { return (m >> 6) & 63; }
   function mKind(m) { return m >> 12; }
 
-  // Number of neighbouring squares whose top piece has colour c.
+  // Number of pieces of colour c (free pieces and prisoners) on the 8 neighbouring squares.
+  // A piece is isolated when this is exactly 1: it touches a single piece of its colour.
   function ownNeighbours(p, i, c) {
     var n = 0, l = NEIGH[i];
-    for (var k = 0; k < l.length; k++) if (p.col[l[k]] === c) n++;
+    for (var k = 0; k < l.length; k++) {
+      var j = l[k];
+      if (p.col[j] === c) n += p.top[j]; else if (p.col[j] === 1 - c) n += p.bot[j];
+    }
     return n;
   }
+  // Height of the top of the stack on square i (floor level + pieces).
+  function topHeight(p, i) { return LEVEL[i] + p.top[i] + p.bot[i]; }
 
   // All legal moves for the side to move (or for square `only`).
   function moves(p, only) {
     var out = [], me = p.side;
     for (var f = 0; f < SIZE; f++) {
       if (p.col[f] !== me || (only != null && f !== only)) continue;
-      var hf = p.top[f] + p.bot[f], l = NEIGH[f], isolated = ownNeighbours(p, f, me) === 1;
+      var hf = topHeight(p, f), l = NEIGH[f], isolated = ownNeighbours(p, f, me) === 1;
       for (var k = 0; k < l.length; k++) {
         var t = l[k], ct = p.col[t];
         if (ct < 0) out.push(mk(f, t, SIMPLE));
         else if (ct === me) { if (isolated) out.push(mk(f, t, STACK)); }
         else {
-          var ht = p.top[t] + p.bot[t];
+          var ht = topHeight(p, t);
           if (hf >= ht) out.push(mk(f, t, CAPTURE));
           if (hf <= ht) out.push(mk(f, t, PRISON));
         }
@@ -175,7 +194,7 @@
       var v = 0;
       v += p.top[i] * 10;            // pieces of the controlling colour
       v += 14;                       // a controlled stack = a piece able to move
-      v += Math.min(h, 4) * 2;       // tall stacks can capture more
+      v += Math.min(h + LEVEL[i], 9);  // high stacks (and high squares) can capture more
       v -= p.bot[i] * 6;             // prisoners held under us are a revolt risk...
       if (p.top[i] - p.bot[i] <= 1 && p.bot[i] > 0) v -= 4;
       s += c === me ? v : -v;
@@ -252,7 +271,7 @@
 
   var api = {
     N: N, SIZE: SIZE, SIMPLE: SIMPLE, STACK: STACK, CAPTURE: CAPTURE, PRISON: PRISON,
-    NEIGH: NEIGH, Pos: Pos, initial: initial, moves: moves, play: play, undo: undo,
+    NEIGH: NEIGH, LEVEL: LEVEL, Pos: Pos, initial: initial, moves: moves, play: play, undo: undo, topHeight: topHeight,
     mk: mk, mFrom: mFrom, mTo: mTo, mKind: mKind, counts: counts, evaluate: evaluate, think: think,
     ownNeighbours: ownNeighbours
   };
