@@ -186,9 +186,15 @@
     muted = !!m;
     try { localStorage.setItem('lehcim.muted', muted ? '1' : '0'); } catch (e) { /* ignore */ }
     if (music && music.master) music.master.gain.value = muted ? 0 : 0.12;
-    document.querySelectorAll('[data-mute]').forEach(function (b) { b.textContent = muted ? '🔇 Son' : '🔊 Son'; });
+    document.querySelectorAll('[data-mute]').forEach(function (b) { b.textContent = muteLabel(b); });
   }
   function isMuted() { return muted; }
+  // Icon-only buttons (class "icon") get just the speaker, others get "Son" too.
+  function muteLabel(b) {
+    var icon = muted ? '🔇' : '🔊';
+    if (b.classList.contains('icon')) return icon;
+    return icon + ' Son';
+  }
 
   // ---------- Page frame: toolbar, help dialog, messages ----------
 
@@ -196,7 +202,7 @@
   // <dialog id="help"> and <dialog id="about">.
   function initPage() {
     document.querySelectorAll('[data-mute]').forEach(function (b) {
-      b.textContent = muted ? '🔇 Son' : '🔊 Son';
+      b.textContent = muteLabel(b);
       b.addEventListener('click', function () { setMuted(!muted); b.blur(); });
     });
     [['data-help', 'help'], ['data-about', 'about']].forEach(function (p) {

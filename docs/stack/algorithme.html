@@ -87,7 +87,28 @@
     </ol>
     <div class="callout">Ce qui n'apporterait rien ici : un moteur physique, une grille spatiale ou un Web Worker. Le nombre d'objets est trop faible pour que la performance soit un sujet ; l'intérêt est dans la lisibilité des règles.</div>
 
-    <div class="nav"><a href="./">▶ Jouer à Stack</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+        <h2>Dans la nouvelle version</h2>
+    <p>La <a href="nouveau/">nouvelle version</a> sépare la simulation (<code>nouveau/engine.js</code>, sans DOM, exécutable dans node) de l'affichage et des commandes (<code>nouveau/game.js</code>). Les règles, les sprites, les sons et la musique d'origine sont conservés. Les cinq pistes de « Comment l'améliorer » ont été réalisées :</p>
+    <ol>
+      <li><strong>Hasard à graine et pas de temps fixe.</strong> Un générateur mulberry32 remplace <code>Math.random</code> dans la simulation, et <code>advance(dt)</code> fait avancer le jeu par pas fixes de 1/120 s avec un accumulateur (au plus 0,1 s rattrapée par image). La graine est affichée sous le statut et peut être imposée dans les réglages. Mesure : la même partie (graine « abc », déplacements de portes scriptés) jouée avec des images à 60 Hz, à 144 Hz et à intervalles aléatoires de 4 à 44 ms donne exactement la même suite de 104 événements (même empreinte <code>35cba388</code>) et le même état final.</li>
+      <li><strong>Courbe de difficulté.</strong> 15 niveaux au lieu de 9 ; intervalle <code>max(0,6 ; 2,6 x 0,9^(niveau-1))</code>, qui atteint enfin le plancher de 0,6 s au niveau 15 ; une couleur de plus tous les deux niveaux (<code>3 + floor((niveau-1)/2)</code>), donc 5 couleurs au niveau 5 au lieu de 7, et les 7 seulement au niveau 9 ; la chute continue d'accélérer plus doucement après le niveau 9 (+5 px/s par niveau).
+        <table>
+          <tr><th>Niveau</th><th>Couleurs avant / après</th><th>Intervalle avant / après</th><th>Chute</th></tr>
+          <tr><td>1</td><td>3 / 3</td><td>2,6 / 2,6 s</td><td>80 px/s</td></tr>
+          <tr><td>3</td><td>5 / 4</td><td>2,2 / 2,11 s</td><td>100 px/s</td></tr>
+          <tr><td>5</td><td>7 / 5</td><td>1,8 / 1,71 s</td><td>120 px/s</td></tr>
+          <tr><td>7</td><td>7 / 6</td><td>1,4 / 1,38 s</td><td>140 px/s</td></tr>
+          <tr><td>9</td><td>7 / 7</td><td>1,0 / 1,12 s</td><td>160 px/s</td></tr>
+          <tr><td>12</td><td>- / 7</td><td>- / 0,82 s</td><td>175 px/s</td></tr>
+          <tr><td>15 (max)</td><td>- / 7</td><td>- / 0,60 s</td><td>190 px/s</td></tr>
+        </table></li>
+      <li><strong>Apparition équitable.</strong> <code>predictColumn(col)</code> suit la descente à travers les quatre portes. <code>spawnMarble</code> tire d'abord la couleur, puis choisit au hasard parmi les colonnes dont la pile d'<em>arrivée</em> reste sous le couloir, en comptant les billes déjà en vol vers elle ; une pile haute reste permise si la bille va y former une paire (elle la fait baisser). Mesure sur 20 000 plateaux aléatoires (piles de 0 à 7, portes n'importe où) : la bille créée va faire déborder une pile dans le couloir dans 6,1 % des cas avec l'ancien tirage, 0,0 % avec le nouveau. Sans aucune action du joueur, la durée de vie moyenne reste la même (200 graines : 40,8 s avant, 39,6 s après au niveau 1 ; 29,6 s et 29,4 s au niveau 5) : la difficulté vient toujours des billes qui traversent le couloir, pas d'un tirage injuste.</li>
+      <li><strong>Pile qui déborde.</strong> Quand la chose percute une pile, tout ce qui est au-dessus de la ligne 5 est retiré (<code>st.splice(LANE_ROW)</code>) avec l'animation de disparition. Mesure : une pile de 8 billes et la chose qui passe pendant 40 s coûtaient 2 vies (la bille de la ligne 7 retombait dans le couloir), elles n'en coûtent plus qu'une.</li>
+      <li><strong>Nettoyage.</strong> <code>doorUnder</code> a disparu ; la déviation est factorisée dans une seule fonction <code>deflect</code>, partagée par la simulation, la prédiction et l'aperçu des trajectoires.</li>
+    </ol>
+    <p>Autres changements : un ordre de déplacement de porte bloqué par une bille est gardé 0,3 s et retenté au lieu d'être annulé (commandes plus tolérantes) ; aperçu optionnel des trajectoires (pointillés de la couleur de la bille, cercle vert pour une paire, rouge si la pile va entrer dans le couloir), calculé par <code>predictPath</code> ; portes que l'on peut faire glisser au doigt ou à la souris, choisir avec <kbd>↑</kbd> <kbd>↓</kbd> et déplacer avec <kbd>←</kbd> <kbd>→</kbd> ; compte à rebours, pause (bouton, <kbd>P</kbd>, automatique quand l'onglet est masqué), tableau de bord latéral, record personnel et meilleurs scores, commandes tactiles.</p>
+
+    <div class="nav"><a href="nouveau/">▶ Jouer à la nouvelle version</a><a href="./">Version d'origine</a><a href="../index.html">◀ Retour à l'accueil</a></div>
   </div>
 </div>
 </body>

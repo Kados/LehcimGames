@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#c2410c">
+<title>Stack (nouvelle version) - LehcimGames</title>
+<link rel="stylesheet" href="../../common/nouveau.css">
+<style>
+  .nv-play { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .nv-stage { min-height: 200px; }
+  .nv-stage canvas { cursor: pointer; touch-action: none; }
+  .nv-stage.shake { animation: shake .35s linear; }
+  @keyframes shake { 20% { transform: translateX(-5px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+  .overlay .btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .overlay .big { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; margin: 0; }
+  .overlay .keys { color: #e8e4dc; text-align: left; }
+  .overlay kbd { background: rgba(255,255,255,.12); color: #fff; border-color: rgba(255,255,255,.3); }
+  .score { grid-template-columns: 1fr 1fr; }
+  .score .v.bump { animation: bump .35s ease-out; }
+  @keyframes bump { 40% { transform: scale(1.18); color: var(--accent); } }
+  .score .v { transform-origin: left center; }
+  .hearts { letter-spacing: 2px; color: var(--bad); }
+  .hearts .off { color: var(--line); }
+  .bar { height: 8px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; margin: 10px 0 4px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  .hs { margin: 0; padding: 0; list-style: none; counter-reset: hs; font-size: 15px; }
+  .hs li { display: flex; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--line); counter-increment: hs; }
+  .hs li::before { content: counter(hs) "."; color: var(--ink-2); width: 1.6em; }
+  .hs li span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hs li span:last-child { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .hs li.me { color: var(--accent); font-weight: 700; }
+  .ctl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .ctl .btn { flex: 1; }
+  #fastBtn, .touchpad .btn { touch-action: none; user-select: none; -webkit-user-select: none; }
+  .touchpad .btn.wide { min-width: 120px; font-size: 16px; }
+  .seed-row { display: flex; gap: 8px; }
+  .seed-row input { flex: 1; min-width: 0; }
+  .side-sm { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+  @media (max-width: 900px) { .nv-side .card.keys-card { display: none; } }
+  .nv-top .btn { white-space: nowrap; }
+  @media (max-width: 560px) {
+    .nv-top .badge { display: none; }
+    .nv-top [data-mute] { width: 40px; padding: 0; }
+    .nv-top [data-mute] .lbl { display: none; }
+    .nv-top .actions { gap: 2px; }
+  }
+  @media (max-width: 360px) { .nv-top #new { padding: 0 10px; font-size: 14px; } }
+</style>
+</head>
+<body>
+<header class="nv-top">
+  <a class="back" href="../../index.html#stack">← <span>Accueil</span></a>
+  <h1>Stack</h1>
+  <span class="badge">Nouvelle version</span>
+  <span class="grow"></span>
+  <div class="actions">
+    <button class="btn primary" id="new">Nouvelle partie</button>
+    <button class="btn icon ghost" data-help title="Règles" aria-label="Règles">?</button>
+    <button class="btn icon ghost" id="settingsBtn" title="Réglages" aria-label="Réglages">⚙</button>
+    <button class="btn ghost" data-mute title="Son" aria-label="Son"></button>
+  </div>
+</header>
+
+<main class="nv-main">
+  <div class="nv-play">
+    <div class="nv-stage" id="stage">
+      <canvas id="game" width="480" height="480" aria-label="Plateau de jeu Stack" role="img"></canvas>
+      <div class="overlay" id="overlay" hidden></div>
+    </div>
+    <div class="touchpad" id="touchpad" aria-label="Commandes tactiles">
+      <button class="btn" data-tp="up" aria-label="Porte du dessus">▲</button>
+      <button class="btn" data-tp="left" aria-label="Porte vers la gauche">◀</button>
+      <button class="btn" data-tp="right" aria-label="Porte vers la droite">▶</button>
+      <button class="btn" data-tp="down" aria-label="Porte du dessous">▼</button>
+      <button class="btn wide" data-tp="fast" aria-label="Accélérer la chose (maintenir)">⏩ Accélérer</button>
+      <button class="btn" data-tp="pause" aria-label="Pause">⏸</button>
+    </div>
+  </div>
+  <aside class="nv-side">
+    <section class="card"><div class="status" id="status">Prêt</div><div class="sub" id="substatus">Appuyez sur « Nouvelle partie ».</div>
+      <div class="ctl">
+        <button class="btn" id="pauseBtn" aria-pressed="false" disabled>⏸ Pause</button>
+        <button class="btn" id="fastBtn" title="Maintenir enfoncé (ou barre d'espacement)" disabled>⏩ Accélérer</button>
+      </div>
+    </section>
+    <section class="card" aria-label="Tableau de bord">
+      <div class="score">
+        <div class="p"><div class="n">Score</div><div class="v" id="hudScore">0</div></div>
+        <div class="p"><div class="n">Niveau</div><div class="v" id="hudLevel">1</div></div>
+        <div class="p"><div class="n">Vies</div><div class="v hearts" id="hudLives" aria-label="3 vies">♥♥♥</div></div>
+        <div class="p"><div class="n">Vitesse</div><div class="v" id="hudSpeed">1</div></div>
+      </div>
+      <div class="bar" aria-hidden="true"><i id="hudBar"></i></div>
+      <div class="sub" id="hudNext">Niveau suivant dans 50 billes</div>
+      <dl class="rows" style="margin:10px 0 0">
+        <dt>Record personnel</dt><dd id="hudBest">0</dd>
+        <dt>Paires effacées</dt><dd id="hudPairs">0</dd>
+      </dl>
+    </section>
+    <section class="card">
+      <h2>Aides</h2>
+      <label class="switch">Trajectoires des billes <input type="checkbox" id="optPath"></label>
+      <div class="side-sm">Pointillés : le chemin de chaque bille à travers les portes, et où elle s'arrêtera (vert : paire, rouge : la pile déborde dans le couloir). Touche <kbd>T</kbd>.</div>
+    </section>
+    <section class="card">
+      <h2>Meilleurs scores</h2>
+      <ol class="hs" id="hsList"></ol>
+    </section>
+    <section class="card keys-card">
+      <h2>Commandes</h2>
+      <div class="keys">
+        <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>choisir la porte (ou <kbd>1</kbd> à <kbd>4</kbd>)</span>
+        <span><kbd>←</kbd> <kbd>→</kbd></span><span>déplacer la porte choisie</span>
+        <span>Souris</span><span>clic à côté d'une porte, ou glisser la porte</span>
+        <span><kbd>Espace</kbd></span><span>accélérer la chose (maintenir)</span>
+        <span><kbd>P</kbd> <kbd>Échap</kbd></span><span>pause</span>
+        <span><kbd>T</kbd></span><span>trajectoires</span>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<footer class="nv-foot">
+  <a href="../">Version d'origine</a>
+  <a href="../algorithme.html">L'algorithme</a>
+  <a href="../../index.html">Tous les jeux</a>
+</footer>
+
+<dialog id="help"><div class="d-head"><h2>Règles du jeu Stack</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <h3>But du jeu</h3>
+    <p>Obtenir le maximum de points. On obtient un point chaque fois qu'une nouvelle bille apparaît. Les billes sont générées automatiquement tant que la « chose » qui se déplace de droite à gauche est intacte.</p>
+    <p>Mais cette dernière est détruite dès lors qu'elle heurte une bille. Elle ne dispose que de trois vies. A vous de les gérer au mieux !</p>
+    <h3>Les portes</h3>
+    <p>Chaque rangée a une « porte » (pyramide). Une bille qui arrive sur sa moitié gauche est déviée d'une colonne vers la gauche, sur sa moitié droite d'une colonne vers la droite. Le placement habile des portes vous permet d'orienter finement la chute des billes.</p>
+    <p>Pour déplacer une porte : cliquez (ou touchez) à droite ou à gauche d'elle, sur sa rangée, ou faites-la glisser du doigt. Au clavier : <kbd>↑</kbd> <kbd>↓</kbd> choisissent la porte, <kbd>←</kbd> <kbd>→</kbd> la déplacent.</p>
+    <h3>Les piles et les paires</h3>
+    <p>Les billes s'empilent en bas du plateau. Une bille tombant sur une bille de même couleur disparaît, entraînant sa consoeur avec elle, et cela génère un espace potentiellement vital pour la « chose ».</p>
+    <h3>La chose</h3>
+    <p>Elle circule dans le couloir sombre, juste au-dessus des piles. Une pile qui déborde dans le couloir, ou une bille qui le traverse au mauvais moment, la détruit. La <kbd>barre d'espacement</kbd> (ou le bouton « Accélérer » maintenu) la fait accélérer pour esquiver.</p>
+    <h3>Niveaux</h3>
+    <p>Le niveau augmente tous les 50 points, jusqu'au niveau 15 : les billes tombent plus vite, plus souvent, et une nouvelle couleur arrive tous les deux niveaux. Au départ, le score est proportionnel au niveau choisi.</p>
+    <h3>Nouveautés de cette version</h3>
+    <p>Compte à rebours, pause (<kbd>P</kbd>), trajectoires des billes en option, apparition plus équitable des billes, pile qui déborde vidée d'un coup quand la chose la percute, parties rejouables avec une graine.</p>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">J'ai compris</button></div></dialog>
+
+<dialog id="settings"><div class="d-head"><h2>Réglages</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <div class="field"><span class="label" id="lvlLabel">Niveau de départ</span>
+      <div class="seg" id="optLevel" role="group" aria-labelledby="lvlLabel">
+        <button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button><button data-v="5">5</button>
+      </div>
+    </div>
+    <label class="switch">Musique <input type="checkbox" id="optMusic"></label>
+    <label class="switch">Trajectoires des billes <input type="checkbox" id="optPath2"></label>
+    <label class="switch">Compte à rebours <input type="checkbox" id="optCountdown"></label>
+    <div class="field" style="margin-top:8px"><label for="optSeed">Graine (vide = hasard)</label>
+      <div class="seed-row"><input type="text" id="optSeed" maxlength="20" autocomplete="off" placeholder="ex. 1234"><button class="btn" id="seedLast" type="button">Dernière</button></div>
+      <span class="side-sm">Même graine et mêmes gestes : même partie. La graine de la partie en cours est affichée sous le statut.</span>
+    </div>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="../../common/lehcim.js"></script>
+<script src="engine.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
