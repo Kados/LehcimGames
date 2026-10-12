@@ -6,60 +6,81 @@
 <title>Stack - LehcimGames</title>
 <link rel="stylesheet" href="../common/style.css">
 <style>
-  canvas.game { cursor: crosshair; touch-action: none; }
-  #fast { touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas.game { touch-action: none; background: #000; }
+  canvas.game.play { cursor: none; }
+  #fast { touch-action: none; user-select: none; -webkit-user-select: none; display: none; }
+  @media (pointer: coarse) { #fast { display: inline-block; } }
+  .toolbar button:disabled { color: #808080; }
+  dialog .radios { display: flex; gap: 16px; align-items: flex-end; }
+  dialog .radios fieldset { border: 1px solid #808080; padding: 6px 14px; margin: 0; }
+  dialog .radios label { display: block; padding: 3px 0; }
+  .rules dt { display: inline-block; border: 1px solid #000; padding: 1px 8px; margin: 8px 0 2px; font-weight: normal; background: #f4f4f4; }
+  .rules dd { margin: 2px 0 6px 0; }
 </style>
 </head>
 <body>
 <div class="window">
   <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><a href="nouveau/" style="margin-right:16px">Nouvelle version ▶</a><span>Jeu STACK</span></div>
   <div class="toolbar">
-    <button id="new">Nouvelle partie</button>
-    <label>Niveau
-      <select id="level">
-        <option value="1">Niveau 1</option><option value="2">Niveau 2</option><option value="3">Niveau 3</option>
-        <option value="4">Niveau 4</option><option value="5">Niveau 5</option>
-      </select>
-    </label>
-    <label>Musique
-      <select id="music">
-        <option value="1">Avec Musique</option><option value="0">Sans Musique</option>
-      </select>
-    </label>
+    <button id="new">Nouvelle Partie</button>
+    <button id="levelBtn">Niveau</button>
     <button id="abandon">Abandon</button>
-    <button id="fast" title="Maintenir enfoncé (ou barre d'espacement)">Accélérer</button>
-    <button data-help>Règles</button>
+    <button id="musicBtn">Musique</button>
+    <button id="rulesBtn">Règles du jeu</button>
+    <button id="aboutBtn">A propos de ...</button>
     <button data-mute></button>
-    <button data-about>A propos</button>
+    <button id="fast" title="Maintenir enfoncé (comme la barre d'espacement)">Accélérer</button>
     <span class="status" id="status"></span>
   </div>
-  <div class="stage"><canvas class="game" id="game" width="640" height="480"></canvas></div>
-  <p class="hint">Clic gauche à droite ou à gauche d'une « porte » : elle glisse vers la souris. <kbd>Barre d'espacement</kbd> (ou bouton « Accélérer » maintenu) : la « chose » accélère. <kbd>P</kbd> : pause.</p>
+  <div class="stage"><canvas class="game" id="game" width="634" height="393"></canvas></div>
+  <p class="hint">Clic gauche à droite ou à gauche d'une « porte » (les petites barres du triangle de clous), sur sa ligne : elle se déplace d'un cran vers la souris. <kbd>Barre d'espacement</kbd> (ou bouton « Accélérer » maintenu sur écran tactile) : la « chose » accélère. <kbd>P</kbd> : pause (ajout de ce portage).</p>
 </div>
 
-<dialog id="help"><h2>Règles du jeu Stack</h2><div class="body">
-  <h3>But du jeu</h3>
-  <p>Obtenir le maximum de points. On obtient un point chaque fois qu'une nouvelle bille apparaît. Les billes sont générées automatiquement tant que la « chose » qui se déplace de droite à gauche est intacte.</p>
-  <p>Mais cette dernière est détruite dès lors qu'elle heurte une bille. Elle ne dispose que de trois vies. A vous de les gérer au mieux !</p>
-  <h3>Barre d'espacement</h3>
-  <p>La « chose » accélère, ce qui lui permet éventuellement d'éviter les billes en train de tomber.</p>
-  <h3>Clic gauche</h3>
-  <p>Déplace la « porte » située sur la même ligne que la souris en direction de ladite souris (si c'est possible). Pour résumer, cliquez à droite ou à gauche de la « porte » que vous désirez bouger, et elle se déplacera !</p>
-  <p>Le placement habile des « portes » vous permet d'orienter finement le rebond des billes.</p>
-  <p>Notez qu'une bille tombant sur une bille de même couleur disparaît, entraînant sa consoeur avec elle, et cela génère évidemment un espace potentiellement vital pour la « chose ».</p>
-  <p><i>Remarque :</i> au départ, le score, la fréquence d'apparition des billes et leur variété sont proportionnels au niveau choisi.</p>
-  <h3>Précisions de cette version</h3>
-  <p>Les billes apparaissent en haut du plateau et roulent vers le bas. Une bille qui arrive sur la moitié gauche d'une porte (pyramide) est déviée vers la gauche, sur la moitié droite vers la droite. Les billes s'empilent en bas du plateau ; la « chose » circule dans le couloir situé juste au-dessus des piles. Une pile qui déborde dans le couloir, ou une bille qui le traverse au mauvais moment, détruit la « chose » (la bille heurtée disparaît dans l'explosion).</p>
-  <p>Le niveau augmente tous les 50 points : les billes tombent plus vite, plus souvent, et avec plus de couleurs.</p>
+<dialog id="help"><h2>REGLES  DU JEU STACK</h2><div class="body rules">
+  <dl>
+    <dt>But du jeu</dt>
+    <dd>Obtenir le maximum de points . On obtient un point chaque fois qu'une nouvelle bille apparaît . Les billes sont générées automatiquement tant que la "chose" qui se déplace de droite à gauche est intacte .</dd>
+    <dd>Mais cette dernière est détruite dès lors qu'elle heurte une bille . Elle ne dispose que de trois vies . A vous de les gérer au mieux !</dd>
+    <dd>Le placement habile des "portes" vous permet d'orienter finement le rebond des billes .</dd>
+    <dd>Notez qu'une bille tombant sur une bille de même couleur disparaît , entrainant sa consoeur avec elle , et cela génère évidemment un espace potentiellement vital pour la "chose" .</dd>
+    <dt>Barre d'espacement</dt>
+    <dd>la "chose" accélère , ce qui lui permet éventuellement d'éviter les billes en train de tomber .</dd>
+    <dt>Clic gauche</dt>
+    <dd>déplace la "porte" située sur la même ligne que la souris en direction de la dite souris ( si c'est possible ) .Pour résumer, cliquez à droite ou à gauche de la "porte" que vous désirez bouger, et elle se déplacera !</dd>
+  </dl>
+  <p>Remarque : au départ, le score, la fréquence d'apparition des billes et leur variété sont proportionnels au niveau choisi .</p>
 </div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
-<dialog id="about"><h2>A propos de...</h2><div class="body">
-  <p><b>Jeu STACK</b><br>Concepteur : Lehcim Noil</p>
-  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation.</p>
-  <p>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes, ses sons et sa musique d'origine. Les règles détaillées du jeu ont été reconstituées à partir du texte d'aide original.</p>
+<dialog id="about"><h2>A propos de ...</h2><div class="body">
+  <p><b>Jeu STACK</b></p>
+  <p>Concepteur : Lehcim Noil<br>Adresse : LehcimNoil@flashyland.com</p>
+  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation .</p>
+  <p>Configuration conseillée : 256 couleurs - 640*480</p>
+  <p>Mises à jour et autres jeux sur le site : http://lehcim.flashyland.com (site d'origine, historique)</p>
+  <p><i>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes, ses sons et sa musique d'origine. Les règles (cadence, vitesses, collisions, progression) ont été relevées dans le programme d'origine.</i></p>
 </div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<dialog id="levelDlg"><h2>Niveau de jeu initial</h2><div class="body radios">
+  <fieldset id="levelRadios">
+    <label><input type="radio" name="lvl" value="1"> Niveau 1</label>
+    <label><input type="radio" name="lvl" value="2"> Niveau 2</label>
+    <label><input type="radio" name="lvl" value="3"> Niveau 3</label>
+    <label><input type="radio" name="lvl" value="4"> Niveau 4</label>
+    <label><input type="radio" name="lvl" value="5"> Niveau 5</label>
+  </fieldset>
+  <button onclick="this.closest('dialog').close()">OK</button>
+</div></dialog>
+
+<dialog id="musicDlg"><h2>Musique</h2><div class="body radios">
+  <fieldset id="musicRadios">
+    <label><input type="radio" name="mus" value="1"> Avec Musique</label>
+    <label><input type="radio" name="mus" value="0"> Sans Musique</label>
+  </fieldset>
+  <button onclick="this.closest('dialog').close()">OK</button>
+</div></dialog>
 
 <script src="../common/lehcim.js"></script>
+<script src="engine.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

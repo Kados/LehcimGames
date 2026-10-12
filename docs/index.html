@@ -208,7 +208,7 @@
 
         <article class="card stack reveal" id="stack"><a class="shot" href="stack/nouveau/" data-new><span class="num">07</span><img src="thumbs/stack.png" alt="Le plateau de Stack" loading="lazy"></a>
           <div class="body"><h3>Stack</h3><div class="tags"><span class="tag">Arcade</span><span class="tag">Meilleurs scores</span></div>
-            <p>Oriente les billes qui tombent avec les portes de pierre pour protéger la « chose ». Trois vies, pas une de plus.</p>
+            <p>Oriente les billes qui tombent à travers un triangle de picots en déplaçant 6 petites barres, pour protéger la « chose ». Trois vies, pas une de plus.</p>
             <div class="actions"><a class="btn small primary" href="stack/nouveau/" data-new>▶ Jouer</a><a class="btn small" href="stack/">Version d'origine</a><a class="more" href="#d-stack">En savoir plus ↓</a></div></div></article>
       </div>
     </div>
@@ -341,11 +341,11 @@
         <div>
           <div class="kicker">07 · Arcade</div>
           <h3>Stack</h3>
-          <p>Des billes de couleur apparaissent et tombent sur le plateau. En déplaçant les <b>portes</b> (les pyramides de pierre), tu orientes leur rebond pour protéger la <b>« chose »</b> qui rampe de droite à gauche. Deux billes de même couleur qui se rencontrent disparaissent et libèrent de la place.</p>
-          <p>Chaque nouvelle bille rapporte un point tant que la chose est intacte ; elle n'a que trois vies. Plus le niveau monte, plus les billes sont nombreuses, rapides et variées. Avec la musique d'origine.</p>
+          <p>Des billes de couleur sortent du distributeur et dégringolent à travers un triangle de picots. Sur chacune des 6 rangées, une petite <b>barre</b> se déplace d'un cran à chaque clic et décide si la bille part à gauche ou à droite. Les billes traversent ensuite le couloir où rampe la <b>« chose »</b>, de droite à gauche, avant de s'empiler dans 7 colonnes. Deux billes de même couleur qui se rencontrent disparaissent ; une colonne de 7 billes atteint le couloir.</p>
+          <p>Chaque nouvelle bille rapporte un point tant que la chose est intacte ; elle n'a que trois vies. Tous les 10 points, les billes arrivent plus souvent et une nouvelle couleur apparaît, jusqu'à 7. Avec la musique d'origine.</p>
           <dl class="facts">
             <dt>Joueurs</dt><dd>1 joueur, 5 niveaux de départ, tableau des 5 meilleurs scores</dd>
-            <dt>Commandes</dt><dd>clic à gauche ou à droite d'une porte pour la faire glisser, <kbd>Espace</kbd> pour accélérer la chose, <kbd>P</kbd> pause</dd>
+            <dt>Commandes</dt><dd>clic à gauche ou à droite d'une barre pour la déplacer d'un cran, <kbd>Espace</kbd> pour faire accélérer la chose</dd>
           </dl>
           <div class="links"><a class="btn small primary" href="stack/nouveau/" data-new>▶ Nouvelle version</a><a class="btn small" href="stack/">Version d'origine</a><a class="btn small" href="stack/algorithme.html">🧠 L'algorithme</a></div>
         </div>
@@ -409,7 +409,7 @@
   document.querySelectorAll('[data-new]').forEach(function (a) {
     var href = a.getAttribute('href'), game = href.split('/')[0];
     if (!checked[game]) {
-      checked[game] = fetch(href + 'index.html', { method: 'HEAD' }).then(function (r) { return r.ok; }).catch(function () { return location.protocol === 'file:'; });
+      checked[game] = fetch(href + 'index.html', { cache: 'no-cache' }).then(function (r) { return r.ok; }).catch(function () { return location.protocol === 'file:'; });
     }
     checked[game].then(function (ok) {
       if (ok) return;

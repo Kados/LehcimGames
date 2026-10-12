@@ -1,6 +1,6 @@
 # Stack
 
-Extrait de `stack.zip`. Jeu d'arcade pour 1 joueur : des billes de couleur tombent et rebondissent sur des « portes » que l'on déplace ; il faut protéger la « chose » qui se déplace en bas et marquer le plus de points possible. Avec un tableau des meilleurs scores.
+Extrait de `stack.zip`. Jeu d'arcade pour 1 joueur : des billes de couleur tombent à travers un triangle de picots où 6 petites barres (les « portes ») décident de leur chemin ; il faut protéger la « chose » qui traverse le milieu de l'écran et marquer le plus de points possible. Avec un tableau des meilleurs scores.
 
 ## Fichiers
 
@@ -21,6 +21,7 @@ Extrait de `stack.zip`. Jeu d'arcade pour 1 joueur : des billes de couleur tombe
 - Un clic gauche à droite ou à gauche d'une « porte » la fait glisser vers la souris ; bien placer les portes permet d'orienter le rebond des billes.
 - Une bille qui tombe sur une bille de même couleur disparaît avec elle, ce qui libère une place vitale pour la chose.
 - Au départ, le score, la fréquence d'apparition des billes et leur variété sont proportionnels au niveau choisi.
+- Fonctionnement mesuré dans le jeu d'origine : 7 colonnes en bas ; une colonne de 7 billes atteint le couloir et détruit la chose ; tous les 10 points, la « Vitesse » augmente (les billes arrivent plus souvent, elles ne tombent pas plus vite) et une couleur de plus apparaît, jusqu'à 7.
 
 ## Version navigateur
 

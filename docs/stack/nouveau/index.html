@@ -65,14 +65,14 @@
 <main class="nv-main">
   <div class="nv-play">
     <div class="nv-stage" id="stage">
-      <canvas id="game" width="480" height="480" aria-label="Plateau de jeu Stack" role="img"></canvas>
+      <canvas id="game" width="640" height="400" aria-label="Plateau de jeu Stack" role="img"></canvas>
       <div class="overlay" id="overlay" hidden></div>
     </div>
     <div class="touchpad" id="touchpad" aria-label="Commandes tactiles">
-      <button class="btn" data-tp="up" aria-label="Porte du dessus">▲</button>
-      <button class="btn" data-tp="left" aria-label="Porte vers la gauche">◀</button>
-      <button class="btn" data-tp="right" aria-label="Porte vers la droite">▶</button>
-      <button class="btn" data-tp="down" aria-label="Porte du dessous">▼</button>
+      <button class="btn" data-tp="up" aria-label="Barre du dessus">▲</button>
+      <button class="btn" data-tp="left" aria-label="Barre vers la gauche">◀</button>
+      <button class="btn" data-tp="right" aria-label="Barre vers la droite">▶</button>
+      <button class="btn" data-tp="down" aria-label="Barre du dessous">▼</button>
       <button class="btn wide" data-tp="fast" aria-label="Accélérer la chose (maintenir)">⏩ Accélérer</button>
       <button class="btn" data-tp="pause" aria-label="Pause">⏸</button>
     </div>
@@ -92,8 +92,9 @@
         <div class="p"><div class="n">Vitesse</div><div class="v" id="hudSpeed">1</div></div>
       </div>
       <div class="bar" aria-hidden="true"><i id="hudBar"></i></div>
-      <div class="sub" id="hudNext">Niveau suivant dans 50 billes</div>
+      <div class="sub" id="hudNext">Vitesse 2 dans 10 billes</div>
       <dl class="rows" style="margin:10px 0 0">
+        <dt>Couleurs en jeu</dt><dd id="hudColors">3 / 7</dd>
         <dt>Record personnel</dt><dd id="hudBest">0</dd>
         <dt>Paires effacées</dt><dd id="hudPairs">0</dd>
       </dl>
@@ -101,7 +102,7 @@
     <section class="card">
       <h2>Aides</h2>
       <label class="switch">Trajectoires des billes <input type="checkbox" id="optPath"></label>
-      <div class="side-sm">Pointillés : le chemin de chaque bille à travers les portes, et où elle s'arrêtera (vert : paire, rouge : la pile déborde dans le couloir). Touche <kbd>T</kbd>.</div>
+      <div class="side-sm">Pointillés : le chemin de chaque bille à travers les clous et l'endroit où elle s'arrêtera (cercle vert : paire, croix rouge : la colonne atteint le couloir). « ? » : clou sans barre à côté, la bille part au hasard. Touche <kbd>T</kbd>.</div>
     </section>
     <section class="card">
       <h2>Meilleurs scores</h2>
@@ -110,9 +111,9 @@
     <section class="card keys-card">
       <h2>Commandes</h2>
       <div class="keys">
-        <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>choisir la porte (ou <kbd>1</kbd> à <kbd>4</kbd>)</span>
-        <span><kbd>←</kbd> <kbd>→</kbd></span><span>déplacer la porte choisie</span>
-        <span>Souris</span><span>clic à côté d'une porte, ou glisser la porte</span>
+        <span><kbd>↑</kbd> <kbd>↓</kbd></span><span>choisir la barre (ou <kbd>1</kbd> à <kbd>6</kbd>)</span>
+        <span><kbd>←</kbd> <kbd>→</kbd></span><span>déplacer la barre choisie d'un cran</span>
+        <span>Souris</span><span>clic à gauche ou à droite d'une barre, sur sa ligne, ou glisser</span>
         <span><kbd>Espace</kbd></span><span>accélérer la chose (maintenir)</span>
         <span><kbd>P</kbd> <kbd>Échap</kbd></span><span>pause</span>
         <span><kbd>T</kbd></span><span>trajectoires</span>
@@ -132,17 +133,17 @@
     <h3>But du jeu</h3>
     <p>Obtenir le maximum de points. On obtient un point chaque fois qu'une nouvelle bille apparaît. Les billes sont générées automatiquement tant que la « chose » qui se déplace de droite à gauche est intacte.</p>
     <p>Mais cette dernière est détruite dès lors qu'elle heurte une bille. Elle ne dispose que de trois vies. A vous de les gérer au mieux !</p>
-    <h3>Les portes</h3>
-    <p>Chaque rangée a une « porte » (pyramide). Une bille qui arrive sur sa moitié gauche est déviée d'une colonne vers la gauche, sur sa moitié droite d'une colonne vers la droite. Le placement habile des portes vous permet d'orienter finement la chute des billes.</p>
-    <p>Pour déplacer une porte : cliquez (ou touchez) à droite ou à gauche d'elle, sur sa rangée, ou faites-la glisser du doigt. Au clavier : <kbd>↑</kbd> <kbd>↓</kbd> choisissent la porte, <kbd>←</kbd> <kbd>→</kbd> la déplacent.</p>
-    <h3>Les piles et les paires</h3>
-    <p>Les billes s'empilent en bas du plateau. Une bille tombant sur une bille de même couleur disparaît, entraînant sa consoeur avec elle, et cela génère un espace potentiellement vital pour la « chose ».</p>
+    <h3>Le triangle de clous et les barres</h3>
+    <p>Les billes sortent du distributeur, en haut, et descendent à travers un triangle de 6 rangées de clous. Sur chaque clou, la bille part d'un cran à gauche ou à droite. Chaque rangée a une petite barre (une « porte ») posée entre deux clous : si la barre est juste à côté de la bille, elle la renvoie de l'autre côté ; sinon, la bille part au hasard.</p>
+    <p>Pour déplacer une barre d'un cran : cliquez (ou touchez) à gauche ou à droite d'elle, sur sa ligne. Au clavier : <kbd>↑</kbd> <kbd>↓</kbd> choisissent la barre, <kbd>←</kbd> <kbd>→</kbd> la déplacent. Une barre ne peut pas aller sous une bille qui roule sur son clou.</p>
+    <h3>Les colonnes et les paires</h3>
+    <p>Sous le triangle, la bille traverse le couloir de la chose et tombe dans l'une des 7 colonnes. Une bille tombant sur une bille de même couleur disparaît, entraînant sa consoeur avec elle, et cela génère un espace potentiellement vital pour la « chose » : une colonne de 7 billes déborde dans le couloir.</p>
     <h3>La chose</h3>
-    <p>Elle circule dans le couloir sombre, juste au-dessus des piles. Une pile qui déborde dans le couloir, ou une bille qui le traverse au mauvais moment, la détruit. La <kbd>barre d'espacement</kbd> (ou le bouton « Accélérer » maintenu) la fait accélérer pour esquiver.</p>
-    <h3>Niveaux</h3>
-    <p>Le niveau augmente tous les 50 points, jusqu'au niveau 15 : les billes tombent plus vite, plus souvent, et une nouvelle couleur arrive tous les deux niveaux. Au départ, le score est proportionnel au niveau choisi.</p>
+    <p>Elle traverse le couloir de droite à gauche puis revient par la droite. Elle est détruite si une bille la touche en traversant le couloir, ou si elle passe devant une colonne de 7 billes. La <kbd>barre d'espacement</kbd> (ou le bouton « Accélérer ») lui donne une accélération d'une demi-seconde, renouvelée tant que la touche est maintenue. Après un choc, les billes en vol finissent leur chute, puis les colonnes et les barres sont remises à zéro.</p>
+    <h3>Progression</h3>
+    <p>Une bille toutes les 60 - N périodes de 40 ms au niveau N. Tous les 10 points, la vitesse augmente : une période de moins entre deux billes, et une couleur de plus jusqu'à 7 (3 couleurs au niveau 1, 7 au niveau 5). Tous les 30 points, la chose change d'aspect. Au départ, le score vaut 10 points par niveau au-dessus du premier.</p>
     <h3>Nouveautés de cette version</h3>
-    <p>Compte à rebours, pause (<kbd>P</kbd>), trajectoires des billes en option, apparition plus équitable des billes, pile qui déborde vidée d'un coup quand la chose la percute, parties rejouables avec une graine.</p>
+    <p>Compte à rebours, pause (<kbd>P</kbd>), aperçu des trajectoires en option, choix des barres au clavier et commandes tactiles, parties rejouables avec une graine. Les règles sont celles du jeu d'origine.</p>
   </div>
   <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">J'ai compris</button></div></dialog>
 
@@ -165,6 +166,7 @@
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <script src="../../common/lehcim.js"></script>
+<script src="../engine.js"></script>
 <script src="engine.js"></script>
 <script src="game.js"></script>
 </body>

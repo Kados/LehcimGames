@@ -11,102 +11,88 @@
   <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>Stack : l'algorithme</span></div>
   <div class="article">
     <h1>Stack : comment fonctionne l'algorithme</h1>
-    <p class="lead">Stack n'a pas d'adversaire « intelligent » : c'est une petite simulation en temps réel sur une grille. Des billes tombent, les « portes » pyramidales les dévient d'une colonne à gauche ou à droite, deux billes de même couleur s'annulent, et la « chose » traverse un couloir où tout contact lui coûte une vie. Tout tient dans <code>game.js</code>, avec des règles simples et déterministes que le joueur peut apprendre et anticiper.</p>
+    <p class="lead">Stack n'a pas d'adversaire « intelligent » : c'est une petite simulation en temps réel, cadencée par une minuterie de 40 ms, en coordonnées entières. Les billes sortent d'un distributeur, traversent un triangle de clous où de petites barres décident de leur côté, croisent le couloir de la « chose » et s'empilent dans 7 colonnes. Les règles ci-dessous ont été relevées dans le programme d'origine (<code>STACK.EXE</code>, Borland Pascal avec WinG) puis vérifiées en le faisant tourner ; la version d'origine les reproduit dans <code>engine.js</code>.</p>
 
     <h2>Ce que fait l'algorithme</h2>
 
-    <h3>La boucle de simulation</h3>
-    <p>Le plateau mesure 400 x 420 pixels, découpé en <code>COLS = 20</code> colonnes de <code>CELL = 20</code> pixels. À chaque image, <code>frame()</code> (appelée par <code>requestAnimationFrame</code>) calcule le temps écoulé <code>dt</code>, plafonné à 0,05 s pour éviter les sauts après un onglet en arrière-plan, puis appelle <code>update(dt)</code> et <code>render()</code>. L'ordre des étapes compte :</p>
-<pre><code>update(dt):
-  stepFx(dt)                       // effets visuels
-  si partie en cours et pas en pause :
-    stepDoors(dt)                  // portes d'abord
-    si la chose est vivante :
-      spawnT -= dt
-      si spawnT &lt;= 0 : spawnMarble(); spawnT = spawnInterval() * (0.75 + random*0.5)
-    pour chaque bille : stepMarble(m, dt)
-    stepChose(dt)                  // collisions avec la chose
-    supprimer les billes marquées dead</code></pre>
-    <p>Toutes les vitesses sont exprimées en pixels par seconde et multipliées par <code>dt</code> : le jeu tourne à la même allure à 30 ou 144 images par seconde.</p>
+    <h3>La version d'origine</h3>
+    <p>Tout se passe dans une image de 640 x 400 pixels (un tampon WinG recopié dans la fenêtre). Une minuterie Windows (<code>SetTimer</code>, 40 ms) appelle à chaque « tic » la même procédure, puis demande un rafraîchissement de la fenêtre :</p>
+<pre><code>tic():
+  si la partie est finie : animation de fin (54 tics), puis tableau des scores
+  sinon :
+    6 barres : avancer d'un demi-cran si elles sont en mouvement
+    si la chose n'est pas « morte » :
+      chose()                         // avance, tests de collision
+      pour chaque bille : bille()     // chute, clous, couloir, colonnes
+      compteur++
+      si compteur &gt;= intervalle et la chose n'explose pas : nouvelle bille
+    sinon si plus de vie : fin de partie
+    sinon : plateau remis à zéro (barres, colonnes, billes, chose)</code></pre>
+    <p>Tout est en pixels par tic : il n'y a ni <code>dt</code> ni physique. Une partie est donc la même quelle que soit la vitesse de la machine, au rythme de la minuterie près.</p>
 
-    <h3>Les billes : chute, rebond sur les portes, empilement</h3>
-    <p>Une bille passe par trois états. En <code>appear</code>, elle grossit dans son trou pendant 0,45 s. En <code>fall</code>, elle descend tout droit à <code>fallSpeed() = 70 + 10 x niveau</code> px/s. En <code>roll</code>, elle roule sur une porte.</p>
-    <p>Il n'y a pas de vraie physique (ni gravité accélérée, ni rebond élastique) : la déviation est une règle de grille. Chaque porte occupe deux colonnes, <code>col</code> et <code>col + 1</code>. Dans <code>stepMarble</code>, on teste si la bille <em>franchit</em> pendant ce pas la ligne située juste au-dessus de la porte (<code>m.y &lt; yy</code> et <code>ny &gt;= yy</code>, avec <code>yy = d.top - CELL</code>). Ce test de franchissement, plutôt qu'un test de position, garantit qu'aucune bille ne traverse une porte même avec un grand <code>dt</code>.</p>
-    <ul>
-      <li>bille sur la moitié gauche (<code>col</code>) : elle part vers <code>col - 1</code> ;</li>
-      <li>bille sur la moitié droite (<code>col + 1</code>) : elle part vers <code>col + 2</code> ;</li>
-      <li>contre un mur, la direction est inversée (<code>to &lt; 0</code> donne <code>col + 2</code>, <code>to &gt;= COLS</code> donne <code>col - 1</code>).</li>
-    </ul>
-    <p>Pendant le roulement, un paramètre <code>m.t</code> avance de <code>v x dt / 40</code> : la bille glisse en ligne droite (interpolation linéaire) de sa colonne de départ à sa colonne d'arrivée tout en descendant de 40 pixels, la hauteur de la porte. Puis elle repasse en chute libre. Les quatre portes (<code>DOOR_TOPS = [70, 125, 180, 235]</code>) étant superposées, une bille peut ricocher plusieurs fois avant d'atteindre les piles.</p>
-    <p>Les piles sont un simple tableau par colonne, <code>G.stacks[c]</code>, de bas en haut. Quand la bille atteint le sommet de sa pile (<code>stackY(h)</code>) :</p>
-    <ul>
-      <li>si la pile a déjà <code>MAX_STACK = 8</code> billes, la nouvelle éclate ;</li>
-      <li>si la bille du sommet a la même couleur, les deux disparaissent (<code>st.pop()</code>) : c'est tout le « matching », une seule paire, sans réaction en chaîne ;</li>
-      <li>sinon elle est empilée (<code>st.push</code>), en gardant l'image de rotation atteinte pendant sa chute.</li>
-    </ul>
+    <h3>Les billes et le triangle de clous</h3>
+    <p>Une bille naît en (210, 16), cachée sous la grille du distributeur, de la couleur annoncée par la bille affichée dans le distributeur ; la suivante est tirée aussitôt parmi les couleurs en jeu. Elle descend de 4 pixels par tic. Le triangle compte 6 rangées de clous (3 à 8 clous, espacés de 24 pixels) aux hauteurs <code>y = 60 + 24 (r - 1)</code>. Quand le bas de la bille atteint une rangée (y = 40, 64, ..., 160), elle part d'un cran à gauche ou à droite : en 5 tics elle se décale de 12 pixels et descend de 12 (pas de (4, 0), (3, 2), (3, 3), (2, 3), (0, 4)), puis reprend sa chute. Après 6 rangées, sa position est l'une des 7 colonnes <code>x = 138 + 24 c</code>.</p>
+    <p>Le côté se décide ainsi : <code>g</code> est l'indice de l'intervalle entre clous au-dessus duquel arrive la bille, <code>pos</code> celui de la barre de la rangée.</p>
+<pre><code>si pos == g        : à gauche   (la barre est à sa droite)
+sinon si pos + 1 == g : à droite (la barre est à sa gauche)
+sinon              : Random(2)  // pile ou face</code></pre>
+    <p>Au départ, les 6 barres forment un escalier qui envoie toutes les billes dans la colonne de gauche. Chaque passage sur un clou joue l'un des trois sons de cliquetis, tiré au hasard.</p>
 
-    <h3>Les portes</h3>
-    <p>Un clic dans la bande d'une porte (de <code>top - 10</code> à <code>top + 50</code>) fixe une colonne cible dans <code>clickAt</code>. Ensuite <code>stepDoors</code> avance la porte <strong>une colonne à la fois</strong> : le sprite glisse à 240 px/s vers sa colonne logique, puis après 0,02 s la porte tente le pas suivant. Avant chaque pas, <code>doorBlocked</code> vérifie que la nouvelle position reste dans le plateau (colonnes 0 à 18), qu'aucune bille ne roule sur cette porte et qu'aucune bille à la même hauteur n'occupe les cellules visées. Si c'est bloqué, la cible est annulée : la porte ne pousse jamais une bille.</p>
+    <h3>Les 6 barres</h3>
+    <p>La barre de la rangée r peut occuper <code>r + 1</code> positions (2 sur la première rangée, 7 sur la dernière). Un clic gauche dont la hauteur est à moins de 12 pixels de la rangée la fait glisser d'un cran (24 pixels, en 2 tics de 12) vers la souris : à gauche si la souris est au moins 4 pixels à gauche de la barre, à droite si elle est plus de 16 pixels à sa droite. Elle s'arrête aux extrémités. Une bille qui roule sur un clou interdit à la barre de cette rangée la position qui passerait sous elle, jusqu'à ce que la bille atteigne la rangée suivante.</p>
+
+    <h3>Les colonnes et les paires</h3>
+    <p>Chaque colonne est une pile de couleurs. La bille s'arrête dès que <code>(384 - y) div 20</code> égale la hauteur de sa colonne : si la bille du sommet a la même couleur, les deux disparaissent (un fantôme mauve de 4 images) et la colonne baisse d'une bille ; sinon la bille est empilée. Il n'y a pas de limite : une colonne de 7 billes atteint le couloir de la chose.</p>
 
     <h3>La « chose » et les collisions</h3>
-    <p>La chose (146 x 24 pixels) avance de droite à gauche dans le couloir <code>LANE_Y = 320</code>, qui correspond à la ligne de pile <code>LANE_ROW = 6</code>. Sa vitesse vaut <code>choseSpeed() = 26 + 6 x choseBase()</code> px/s, avec <code>choseBase() = 1 + floor((niveau - 1) / 2)</code>, et elle est multipliée par 4 tant que la barre d'espacement est enfoncée. Sortie à gauche, elle parcourt encore <code>TUNNEL = 100</code> pixels cachés avant de réapparaître à droite.</p>
-    <p><code>stepChose</code> fait deux tests de recouvrement de rectangles (AABB), en ne parcourant que 20 colonnes et la poignée de billes en vol :</p>
+    <p>La chose (24 x 24 pixels) part de x = 576, sous la pyramide de droite, et avance de 4 pixels par tic vers la gauche (un passage dure environ 5,5 s) ; sous x = 25 elle revient à droite. La barre d'espacement (chaque répétition de la touche) lui donne 12 tics à 12 pixels par tic et un petit nuage de fumée. Elle est détruite :</p>
     <ul>
-      <li>une pile qui dépasse dans le couloir (<code>st.length &gt; LANE_ROW</code>) et recouvre l'intervalle <code>[x + 3, x + 143]</code> ; la bille de la ligne 6 est retirée (<code>splice</code>) ;</li>
-      <li>une bille en vol qui traverse le couloir, testée seulement contre le corps (de <code>x + 20</code> à <code>x + 126</code>) : les antennes aux deux bouts laissent passer les billes. Cette bille disparaît.</li>
+      <li>par une bille qui traverse le couloir : à chaque tic, une bille en vol dans le couloir mémorise un intervalle interdit autour d'elle (marge de 0, 4 ou 8 pixels selon le recouvrement vertical), testé au tic suivant ;</li>
+      <li>par une colonne de 7 billes ou plus devant laquelle elle passe.</li>
     </ul>
-    <p>Après un choc, <code>hitChose</code> retire une vie ; la chose réapparaît à droite après 1,8 s, clignotante et intouchable pendant 1,5 s (<code>grace</code>). Pendant qu'elle est détruite, aucune bille n'apparaît. À 0 vie, c'est <code>gameOver()</code>.</p>
+    <p>Elle explose alors (13 images, 2 tics chacune, deux explosions possibles tirées au hasard) et ne crée plus de billes. Les billes encore en vol finissent leur chute, puis les colonnes rétrécissent en 7 tics et le plateau est remis à zéro : barres en escalier, colonnes vides, compteur à zéro, première bille orange. Le score, la vitesse et les couleurs sont conservés. Après la troisième explosion, une petite queue sort de la pyramide de droite et y rentre (54 tics), puis vient le tableau des meilleurs scores.</p>
 
-    <h3>Apparition des billes et difficulté</h3>
-    <p><code>spawnMarble</code> tire une colonne au hasard ; si sa pile atteint déjà le couloir (6 billes ou plus), il retire jusqu'à 6 fois. La couleur est tirée parmi <code>nColors() = min(7, 2 + niveau)</code>. Chaque bille rapporte 1 point, et le niveau vaut <code>min(9, 1 + floor(score / 50))</code> ; commencer au niveau N donne d'emblée <code>(N - 1) x 50</code> points. L'intervalle entre deux billes est <code>max(0,6 ; 2,6 - 0,2 x (niveau - 1))</code> secondes, multiplié par un facteur aléatoire entre 0,75 et 1,25.</p>
-
-    <h3>En chiffres</h3>
+    <h3>Apparition des billes et progression</h3>
+    <p>Une bille apparaît tous les <code>intervalle</code> tics et rapporte un point. Au niveau de départ N (1 à 5) : score <code>10 (N - 1)</code>, « Vitesse » N, intervalle <code>60 - N</code> tics, <code>N + 2</code> couleurs. À chaque dizaine de points, tant que l'intervalle dépasse 10 tics : intervalle - 1, Vitesse + 1, une couleur de plus (7 au plus) ; tous les 30 points, la chose prend une autre apparence au tour suivant (5 apparences ; la vitesse de la chose, elle, ne change jamais). Les couleurs arrivent dans l'ordre orange, bleu, kaki, rose, turquoise, rouge, vert.</p>
     <table>
-      <tr><th>Niveau</th><th>Couleurs</th><th>Intervalle moyen</th><th>Chute</th><th>Chose (normal / accéléré)</th></tr>
-      <tr><td>1</td><td>3</td><td>2,6 s</td><td>80 px/s</td><td>32 / 128 px/s</td></tr>
-      <tr><td>3</td><td>5</td><td>2,2 s</td><td>100 px/s</td><td>38 / 152 px/s</td></tr>
-      <tr><td>5</td><td>7</td><td>1,8 s</td><td>120 px/s</td><td>44 / 176 px/s</td></tr>
-      <tr><td>7</td><td>7</td><td>1,4 s</td><td>140 px/s</td><td>50 / 200 px/s</td></tr>
-      <tr><td>9 (max)</td><td>7</td><td>1,0 s</td><td>160 px/s</td><td>56 / 224 px/s</td></tr>
+      <tr><th>Points</th><th>Vitesse (niveau 1)</th><th>Intervalle</th><th>Couleurs</th></tr>
+      <tr><td>0 à 9</td><td>1</td><td>59 tics (2,36 s)</td><td>3</td></tr>
+      <tr><td>10 à 19</td><td>2</td><td>58 tics (2,32 s)</td><td>4</td></tr>
+      <tr><td>20 à 29</td><td>3</td><td>57 tics</td><td>5</td></tr>
+      <tr><td>30 à 39</td><td>4</td><td>56 tics</td><td>6</td></tr>
+      <tr><td>40 et plus</td><td>5, 6, ...</td><td>55, 54, ... tics</td><td>7</td></tr>
+      <tr><td>490</td><td>50</td><td>10 tics (0,4 s), plancher</td><td>7</td></tr>
     </table>
-    <p>La difficulté monte donc sur trois axes à la fois : plus de billes, plus rapides, et plus de couleurs (donc moins de paires qui s'annulent et des piles qui montent plus vite).</p>
+    <p>La cadence monte donc très lentement : il faut 100 points pour passer de 59 à 49 tics entre deux billes. La difficulté vient surtout des couleurs (moins de paires) et des billes qui traversent le couloir au mauvais moment.</p>
+
+    <h3>Le décor</h3>
+    <p>Au lancement du programme, le décor est tiré au hasard une fois pour toutes : dalles sombres autour, dalles de marbre rouge ou bleu pour le triangle, les colonnes et le couloir, morceaux de murs, deux pyramides, le distributeur, le panneau des scores et les clous avec leur ombre. Le jeu dessine ensuite, à chaque tic, la chose, les billes avec leur ombre, les têtes des clous, les barres, la grille du distributeur, les colonnes et les valeurs du panneau.</p>
 
     <h2>Pourquoi ce choix</h2>
-    <p><strong>Une grille plutôt qu'un moteur physique.</strong> Le jeu original pour Windows 3.x raisonnait en cases : une porte dévie toujours d'exactement une colonne. Cette règle déterministe est le cœur du jeu : le joueur peut prévoir où tombera une bille et placer ses portes en conséquence. Une physique réaliste (rebonds, frottements) rendrait les trajectoires imprévisibles et le jeu frustrant.</p>
-    <p><strong>Une boucle simple sur le fil principal.</strong> Il y a au plus quelques dizaines d'objets : les boucles linéaires de <code>doorBlocked</code> et <code>stepChose</code> coûtent quelques microsecondes. Pas besoin de structure spatiale, de Web Worker ni de bibliothèque : un fichier, sans compilation, fidèle à l'esprit du jeu d'origine.</p>
-    <p><strong>Des tests de franchissement.</strong> Plafonner <code>dt</code> et tester le passage d'une ligne plutôt qu'une position évite les billes « fantômes » qui traversent une porte quand le navigateur ralentit.</p>
-    <p>Compromis acceptés : le hasard n'est pas reproductible (<code>Math.random</code>), le pas de temps est variable, et la difficulté plafonne au niveau 9.</p>
+    <p><strong>Des entiers et une minuterie.</strong> Sous Windows 3.x, une minuterie de 40 ms et des déplacements en pixels entiers sont le plus simple et le plus sûr : pas de calcul flottant, des collisions par comparaison d'entiers, et des animations synchronisées avec la logique (une image de sprite par tic).</p>
+    <p><strong>Un triangle de Galton apprivoisé.</strong> Sans barre, la bille ferait pile ou face à chaque clou. Les barres transforment ce hasard en choix du joueur : une barre à côté de la bille la renvoie toujours du même côté. Le joueur ne guide pas une bille en particulier mais règle un « aiguillage » qui servira à toutes les suivantes.</p>
+    <p><strong>Un seul objet par rôle.</strong> Chaque bille, barre, colonne et la chose sont des objets Pascal avec leur propre procédure de mise à jour et de dessin ; la boucle principale ne fait que les appeler dans l'ordre. Il y a au plus une dizaine de billes à la fois : aucune structure particulière n'est nécessaire.</p>
+    <p>Limites acceptées : <code>Randomize</code> est rappelé à chaque bille et à chaque explosion (le hasard dépend de l'horloge), une partie ne peut donc pas être rejouée ; le rythme dépend de la régularité de la minuterie de Windows.</p>
 
     <h2>Comment l'améliorer</h2>
     <ol>
-      <li><strong>Hasard à graine et pas de temps fixe.</strong> Remplacer <code>rnd()</code> et les <code>Math.random()</code> d'<code>update</code> par un petit générateur à graine (mulberry32, une dizaine de lignes), et faire avancer <code>update</code> par pas fixes de 1/120 s avec un accumulateur dans <code>frame()</code>. On obtient des parties rejouables et des tests automatiques fiables via le crochet <code>window.__stack</code> déjà exposé. Effort : faible.</li>
-      <li><strong>Une courbe de difficulté plus progressive.</strong> Le plancher de 0,6 s de <code>spawnInterval</code> n'est jamais atteint (1,0 s au niveau 9, maximum), et les 7 couleurs sont toutes là dès le niveau 5. On peut prolonger la progression au-delà du niveau 9 avec une courbe qui ralentit (par exemple un intervalle en <code>2,6 x 0,9^(niveau-1)</code>), ou décaler l'arrivée des couleurs. Effort : faible, dans les fonctions en tête de <code>game.js</code>.</li>
-      <li><strong>Une apparition plus équitable.</strong> Comme la déviation est déterministe, une fonction <code>predictColumn(col)</code> peut simuler la descente à travers les quatre portes et donner la colonne d'arrivée. <code>spawnMarble</code> pourrait alors éviter les colonnes dont la pile déborde réellement (aujourd'hui il ne regarde que la colonne de départ, pas celle d'arrivée), ou éviter, aux niveaux faciles, une bille impossible à esquiver. Effort : moyen.</li>
-      <li><strong>Des piles qui débordent moins injustement.</strong> Quand la chose percute une pile de 8 billes, <code>splice(LANE_ROW, 1)</code> fait redescendre la bille de la ligne 7 dans le couloir : la chose suivante sera touchée au même endroit. Vider toute la partie de la pile au-dessus du couloir, ou vérifier une paire de même couleur après le <code>splice</code>, rendrait la suite plus jouable. Effort : faible, dans <code>stepChose</code>.</li>
-      <li><strong>Nettoyage.</strong> La fonction <code>doorUnder</code> n'est plus appelée (la détection est faite dans <code>stepMarble</code>) et peut être supprimée. Effort : trivial.</li>
+      <li><strong>Hasard à graine.</strong> Remplacer <code>Random</code>/<code>Randomize</code> par un générateur à graine unique : parties rejouables et tests automatiques. Effort : faible.</li>
+      <li><strong>Montrer le chemin.</strong> Comme la déviation est déterministe dès qu'une barre est à côté de la bille, on peut calculer et afficher la trajectoire de chaque bille (avec une fourche là où le hasard décide) et la colonne d'arrivée. Effort : moyen.</li>
+      <li><strong>Commandes sans souris.</strong> Le jeu n'a qu'une commande au clavier (accélérer) ; choisir une barre au clavier et la déplacer avec les flèches, ou au doigt, ouvre le jeu au tactile. Effort : faible.</li>
+      <li><strong>Pause.</strong> Le programme d'origine n'en a pas. Effort : trivial.</li>
+      <li><strong>Une progression plus sensible.</strong> Une période de moins tous les 10 points est presque imperceptible ; une courbe multiplicative (par exemple 5 % de moins tous les 10 points) rendrait la Vitesse affichée plus parlante. À ne faire qu'en variante, pour ne pas trahir l'original. Effort : faible.</li>
     </ol>
-    <div class="callout">Ce qui n'apporterait rien ici : un moteur physique, une grille spatiale ou un Web Worker. Le nombre d'objets est trop faible pour que la performance soit un sujet ; l'intérêt est dans la lisibilité des règles.</div>
+    <div class="callout">Ce qui n'apporterait rien ici : un moteur physique ou une grille spatiale. Le nombre d'objets est minuscule ; l'intérêt est dans la lisibilité des règles.</div>
 
-        <h2>Dans la nouvelle version</h2>
-    <p>La <a href="nouveau/">nouvelle version</a> sépare la simulation (<code>nouveau/engine.js</code>, sans DOM, exécutable dans node) de l'affichage et des commandes (<code>nouveau/game.js</code>). Les règles, les sprites, les sons et la musique d'origine sont conservés. Les cinq pistes de « Comment l'améliorer » ont été réalisées :</p>
+    <h2>Dans la nouvelle version</h2>
+    <p>La <a href="nouveau/">nouvelle version</a> utilise exactement la même simulation que la version d'origine (<code>engine.js</code> : mêmes tics de 40 ms, mêmes coordonnées, mêmes règles) et le même dessin du plateau. <code>nouveau/engine.js</code> ajoute autour :</p>
     <ol>
-      <li><strong>Hasard à graine et pas de temps fixe.</strong> Un générateur mulberry32 remplace <code>Math.random</code> dans la simulation, et <code>advance(dt)</code> fait avancer le jeu par pas fixes de 1/120 s avec un accumulateur (au plus 0,1 s rattrapée par image). La graine est affichée sous le statut et peut être imposée dans les réglages. Mesure : la même partie (graine « abc », déplacements de portes scriptés) jouée avec des images à 60 Hz, à 144 Hz et à intervalles aléatoires de 4 à 44 ms donne exactement la même suite de 104 événements (même empreinte <code>35cba388</code>) et le même état final.</li>
-      <li><strong>Courbe de difficulté.</strong> 15 niveaux au lieu de 9 ; intervalle <code>max(0,6 ; 2,6 x 0,9^(niveau-1))</code>, qui atteint enfin le plancher de 0,6 s au niveau 15 ; une couleur de plus tous les deux niveaux (<code>3 + floor((niveau-1)/2)</code>), donc 5 couleurs au niveau 5 au lieu de 7, et les 7 seulement au niveau 9 ; la chute continue d'accélérer plus doucement après le niveau 9 (+5 px/s par niveau).
-        <table>
-          <tr><th>Niveau</th><th>Couleurs avant / après</th><th>Intervalle avant / après</th><th>Chute</th></tr>
-          <tr><td>1</td><td>3 / 3</td><td>2,6 / 2,6 s</td><td>80 px/s</td></tr>
-          <tr><td>3</td><td>5 / 4</td><td>2,2 / 2,11 s</td><td>100 px/s</td></tr>
-          <tr><td>5</td><td>7 / 5</td><td>1,8 / 1,71 s</td><td>120 px/s</td></tr>
-          <tr><td>7</td><td>7 / 6</td><td>1,4 / 1,38 s</td><td>140 px/s</td></tr>
-          <tr><td>9</td><td>7 / 7</td><td>1,0 / 1,12 s</td><td>160 px/s</td></tr>
-          <tr><td>12</td><td>- / 7</td><td>- / 0,82 s</td><td>175 px/s</td></tr>
-          <tr><td>15 (max)</td><td>- / 7</td><td>- / 0,60 s</td><td>190 px/s</td></tr>
-        </table></li>
-      <li><strong>Apparition équitable.</strong> <code>predictColumn(col)</code> suit la descente à travers les quatre portes. <code>spawnMarble</code> tire d'abord la couleur, puis choisit au hasard parmi les colonnes dont la pile d'<em>arrivée</em> reste sous le couloir, en comptant les billes déjà en vol vers elle ; une pile haute reste permise si la bille va y former une paire (elle la fait baisser). Mesure sur 20 000 plateaux aléatoires (piles de 0 à 7, portes n'importe où) : la bille créée va faire déborder une pile dans le couloir dans 6,1 % des cas avec l'ancien tirage, 0,0 % avec le nouveau. Sans aucune action du joueur, la durée de vie moyenne reste la même (200 graines : 40,8 s avant, 39,6 s après au niveau 1 ; 29,6 s et 29,4 s au niveau 5) : la difficulté vient toujours des billes qui traversent le couloir, pas d'un tirage injuste.</li>
-      <li><strong>Pile qui déborde.</strong> Quand la chose percute une pile, tout ce qui est au-dessus de la ligne 5 est retiré (<code>st.splice(LANE_ROW)</code>) avec l'animation de disparition. Mesure : une pile de 8 billes et la chose qui passe pendant 40 s coûtaient 2 vies (la bille de la ligne 7 retombait dans le couloir), elles n'en coûtent plus qu'une.</li>
-      <li><strong>Nettoyage.</strong> <code>doorUnder</code> a disparu ; la déviation est factorisée dans une seule fonction <code>deflect</code>, partagée par la simulation, la prédiction et l'aperçu des trajectoires.</li>
+      <li><strong>Hasard à graine et pas fixe.</strong> Un générateur mulberry32 remplace le hasard ; <code>advance(dt)</code> fait avancer le jeu par tics de 40 ms avec un accumulateur. Mesure : la même partie (graine « abc », niveau 2, barres déplacées par un script) jouée avec des images à 60 Hz, à 144 Hz et à intervalles aléatoires de 4 à 44 ms donne la même empreinte d'état (<code>596848ea</code>, 26 points, 1322 tics).</li>
+      <li><strong>Aperçu des trajectoires.</strong> <code>predict(m)</code> suit chaque bille rangée par rangée avec la règle des barres ; là où l'original tire au sort, le chemin se divise (« ? ») et les deux branches sont dessinées plus pâles. Le point d'arrivée est entouré en vert s'il forme une paire, barré en rouge si la colonne atteint le couloir. Mesure : sur 40 parties sans action pendant le vol, 654 billes arrivées, toutes dans une des colonnes prévues (454 trajets sans fourche).</li>
+      <li><strong>Commandes.</strong> Clic ou toucher à côté d'une barre (la règle d'origine, avec une bande un peu plus large sur la première et la dernière rangée), glisser le doigt le long d'une rangée, <kbd>↑</kbd> <kbd>↓</kbd> ou <kbd>1</kbd> à <kbd>6</kbd> pour choisir une barre et <kbd>←</kbd> <kbd>→</kbd> pour la déplacer, bouton « Accélérer » maintenu, pavé tactile.</li>
+      <li><strong>Confort.</strong> Compte à rebours, pause (bouton, <kbd>P</kbd>, automatique quand l'onglet est masqué), tableau de bord latéral (score, vies, vitesse, billes avant la vitesse suivante, couleurs en jeu, paires), record personnel et meilleurs scores.</li>
     </ol>
-    <p>Autres changements : un ordre de déplacement de porte bloqué par une bille est gardé 0,3 s et retenté au lieu d'être annulé (commandes plus tolérantes) ; aperçu optionnel des trajectoires (pointillés de la couleur de la bille, cercle vert pour une paire, rouge si la pile va entrer dans le couloir), calculé par <code>predictPath</code> ; portes que l'on peut faire glisser au doigt ou à la souris, choisir avec <kbd>↑</kbd> <kbd>↓</kbd> et déplacer avec <kbd>←</kbd> <kbd>→</kbd> ; compte à rebours, pause (bouton, <kbd>P</kbd>, automatique quand l'onglet est masqué), tableau de bord latéral, record personnel et meilleurs scores, commandes tactiles.</p>
+    <p>Aucune règle n'est changée : sans action du joueur, une partie au niveau 1 rapporte 12 points en 43 s en moyenne (300 graines), exactement comme le programme d'origine lancé sans y toucher.</p>
 
     <div class="nav"><a href="nouveau/">▶ Jouer à la nouvelle version</a><a href="./">Version d'origine</a><a href="../index.html">◀ Retour à l'accueil</a></div>
   </div>
