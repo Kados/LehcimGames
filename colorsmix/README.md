@@ -14,10 +14,11 @@ Extrait de `coloursmix.zip` (le dossier s'appelle `colorsmix`). Course de couleu
 
 ## Règles (résumé de l'aide du jeu)
 
-- La partie se joue en 2 manches : le jaune commence la première, le rouge la seconde. Si chacun gagne une manche, le plus rapide remporte la partie.
-- Un **globule gris** se promène au hasard. Il ne peut passer que sur une case de la même couleur que la sienne, ou sur une case noire.
+- La partie se joue en 2 manches : le jaune commence la première, le rouge la seconde. Si chacun gagne une manche, le plus rapide remporte la partie ; à temps égaux, la partie est nulle.
+- Un **globule gris** se promène au hasard. Il ne peut passer que sur une case voisine de la même couleur que celle où il se trouve, ou sur une case noire.
 - Le rouge doit amener le globule gris dans la zone noire du haut ou du bas ; le jaune dans celle de gauche ou de droite.
-- Chacun leur tour, les joueurs traversent la zone centrale ; les cases traversées changent de couleur selon la « couleur d'application » choisie. Les cases occupées par un globule ou une pyramide sont interdites.
+- Chacun leur tour, les joueurs traversent la zone centrale ; les cases traversées changent de couleur selon la « couleur d'application » choisie (chaque joueur n'en a que deux : le bleu et sa propre couleur). Les cases occupées par un globule ou une pyramide sont interdites. Si la jauge se vide avant la traversée, le joueur dont c'est le tour perd la manche.
+- Fonctionnement mesuré dans le jeu d'origine : damier de 13 x 13 cases (anneau noir autour de 11 x 11 cases colorées) ; les couleurs forment un cercle (rouge, orange, jaune, vert, bleu, magenta) : appliquer une couleur rapproche la case d'un cran de celle-ci, la couleur opposée donne du brun, et le brun prend la couleur appliquée. Chaque globule a une pyramide, qui se dresse sur la case de départ de sa dernière traversée.
 - **Commandes** : rouge `Q` / `Z` / `S` / `D` pour se déplacer, `2` pour changer de couleur, `1` pour traverser ; jaune : flèches, `Entrée` pour la couleur, `Espace` pour traverser.
 
 ## Version navigateur

@@ -1,10 +1,18 @@
 /*
  * Colours-MIX (version 2) - browser port of the Windows 3.x game by Lehcim Noil.
- * Two globules (red and yellow) take turns: they walk on the black ring around a
- * coloured board, choose an "application colour" and cross the board, mixing the
- * colours of the cells they cross. A grey globule wanders at random but may only
- * step onto a cell of the same colour or onto black: red wants it to reach the top
- * or bottom black zone, yellow the left or right one.
+ * Rules, layout and timings were measured on the original program (run under Wine):
+ * - 13 x 13 board: a ring of black cells around 11 x 11 coloured cells, the 3 x 3
+ *   centre is brown and the grey globule starts in its middle.
+ * - Cell colours sit on a 6 colour wheel (red, orange, yellow, green, blue, magenta)
+ *   plus brown. Applying a primary colour moves a cell one step towards it along the
+ *   wheel; the opposite colour turns brown; brown takes the applied colour.
+ * - Red starts at the middle of the top side, yellow at the middle of the right side;
+ *   both begin each round with the blue application colour (red toggles blue/red,
+ *   yellow toggles blue/yellow). A crossing goes straight across the board from any
+ *   side cell (not a corner) to the opposite side; a pyramid then rises on the start
+ *   cell. Pyramids and globules block walking and the arrival cell.
+ * - The gauge holds 80 pixels: 19.2 s per turn at "Niveau débutant", 9.6 s at
+ *   "Niveau confirmé". When it is empty, the globule whose turn it is loses the round.
  * Uses the original sprite sheet (assets/sheet.png) and sounds (assets/sounds/).
  */
 (function () {
@@ -12,46 +20,45 @@
 
   // ---------- Constants ----------
 
-  var N = 16;                 // board cells per side, black ring included
-  var CELL = 24;              // cell size in pixels (sheet tiles are 24x24)
+  var N = 13;                 // board cells per side, black ring included
+  var CELL = 24;
   var OX = 48, OY = 48;       // board origin inside the metal frame
+  var W = 600, H = 401;       // client area of the original window (below its menu bar)
   var KEY = [184, 10, 70];    // crimson key colour of the sheet
-  var RED = 1, BLUE = 2, YEL = 4;  // colours are bit masks of the 3 primaries
-  var PRIMARIES = [RED, BLUE, YEL];
-  var COLOR_NAMES = { 1: 'rouge', 2: 'bleu', 4: 'jaune' };
-  var STEP_MS = 110;          // walking speed on the black ring
-  var CROSS_MS = 75;          // time per cell while crossing
-  var GREY_MOVE_MS = 420;     // grey globule step duration
+  // Colour codes: 0..5 on the colour wheel, 6 brown, 7 black zone
+  var RED = 0, ORANGE = 1, YEL = 2, GREEN = 3, BLUE = 4, MAGENTA = 5, BROWN = 6, BLACK = 7;
+  var START_COLOURS = [RED, ORANGE, YEL, GREEN, MAGENTA];
+  var OWN = [RED, YEL];       // second application colour of each globule (first is blue)
+  var STEP_MS = 300;          // walking: 4 px every 50 ms
+  var CROSS_MS = 300;         // crossing: same speed
+  var GREY_MS = 480;          // grey globule: 4 px every 80 ms
+  var RISE_MS = 1280;         // pyramid rising: 16 frames of 80 ms (the gauge waits for it)
+  var GAUGE_PX = 80;
+  var PX_MS = [240, 120];     // gauge speed: débutant, confirmé (ms per pixel)
+  var END_MS = 2500;          // end of round animation before the message
 
   // Sprite sheet rectangles
-  var TILE = {                // board cell tiles by colour mask (0 = black zone)
-    0: [0, 48], 1: [24, 0], 3: [48, 0], 2: [24, 24], 6: [48, 24], 4: [24, 48], 5: [48, 48], 7: [0, 72]
-  };
-  var NET = [0, 24];          // diamond net overlay (forbidden line, note 1)
-  var PYRAMID = [0, 0];
-  var DOTS = { 1: [72, 0], 2: [72, 24], 4: [72, 48] };       // application colour buttons
-  var DOTS_ON = { 1: [72, 72], 2: [72, 96], 4: [72, 120] };  // pressed look
-  var WALL = {                // 48x48 metal frame pieces
-    top: [0, 288], bottom: [0, 144], left: [0, 240], right: [0, 192],
-    tl: [48, 288], tr: [48, 240], bl: [48, 192], br: [48, 144]
-  };
-  var ROUNDS_SPR = [208, 0, 82, 80];     // "manche 1 / manche 2" indicator
-  var GAUGE_SPR = [208, 80, 78, 150];    // oval timer gauge
-  var GAUGE_BAR = [33, 32, 11, 84];      // blue bar inside the gauge (relative)
-  var GLOB_X = [368, 512, 656];          // red, yellow, grey globule animation grids
-  var EXPLODE_X = [152, 96];             // red, yellow explosions (14 frames, 28 px pitch)
-  var SMILE_X = [180, 124];              // red, yellow: smoke then smiley (14 frames)
-  var SMOKE_X = 288;                     // grey puff (14 frames)
-  var RISE_X = 344, RISE_Y = 24;         // pyramid rising (16 frames, 24 px pitch)
+  var TILE = {};
+  TILE[RED] = [24, 0]; TILE[MAGENTA] = [48, 0]; TILE[BLUE] = [24, 24]; TILE[GREEN] = [48, 24];
+  TILE[YEL] = [24, 48]; TILE[ORANGE] = [48, 48]; TILE[BROWN] = [0, 72]; TILE[BLACK] = [0, 48];
+  var NET = [0, 24];          // cell bevel and diamond net, drawn over every cell
+  var PANEL_GRID = [24, 72];  // 8 px grid drawn over the black panel
+  var DOT = { 0: 0, 4: 1, 2: 2 };          // application colour -> indicator tile index
+  var GAUGE_SPR = [208, 80, 78, 150], GAUGE_X = 460, GAUGE_Y = 100;
+  var BAR = [33, 36, 11, 80];               // blue bar inside the gauge (relative)
+  var GROOVE = ['#3a3a3a', '#3a3a3a', '#505050', '#505050', '#666666', '#666666', '#666666', '#666666', '#666666', '#666666', '#666666'];
+  var ROUNDS_SPR = [208, 0, 82, 80], ROUNDS_X = 460, ROUNDS_Y = 280;
+  var GLOB_X = [368, 512, 656];             // red, yellow, grey globule animation grids
+  var EXPLODE_X = [152, 96];                // red, yellow explosions (14 frames, 28 px pitch)
+  var SMILE_X = [180, 124];                 // red, yellow: smoke then smiley (14 frames)
+  var SMOKE_X = 288;                        // grey puff (14 frames)
+  var PYRAMID = [0, 0], RISE_X = 344, RISE_Y = 24;   // static pyramid, rising (16 frames)
 
   // ---------- Page and assets ----------
 
   var canvas = document.getElementById('game');
   var g = canvas.getContext('2d');
   var statusEl = document.getElementById('status');
-  var modeSel = document.getElementById('mode');
-  var levelSel = document.getElementById('level');
-  var musicChk = document.getElementById('music');
   var sheet = null;
   Lehcim.initPage();
   Lehcim.fitCanvas(canvas);
@@ -62,20 +69,17 @@
   var soundsLoaded = false;
   function loadSoundsOnce() { if (!soundsLoaded) { soundsLoaded = true; Lehcim.loadSounds(SND); } }
   ['pointerdown', 'keydown'].forEach(function (ev) { window.addEventListener(ev, loadSoundsOnce, { once: true }); });
-  // Sound 6 is a 25 s tune by Nivek: background music, looped.
+  // Sound 6 is a 25 s tune by Nivek: background music during a game ("Musique activée").
   var music = new Audio('assets/sounds/6.wav');
   music.loop = true; music.volume = 0.35;
-  try { musicChk.checked = localStorage.getItem('lehcim.colorsmix.music') !== '0'; } catch (e) { /* ignore */ }
+  var musicOn = true;
+  try { musicOn = localStorage.getItem('lehcim.colorsmix.music') !== '0'; } catch (e) { /* ignore */ }
 
   function updateMusic() {
-    var want = musicChk.checked && !Lehcim.isMuted() && G.phase !== 'idle' && G.phase !== 'over';
+    var want = musicOn && !Lehcim.isMuted() && (G.phase === 'play' || G.phase === 'end');
     if (want && music.paused) { var p = music.play(); if (p && p.catch) p.catch(function () { /* autoplay */ }); }
     else if (!want && !music.paused) music.pause();
   }
-  musicChk.addEventListener('change', function () {
-    try { localStorage.setItem('lehcim.colorsmix.music', musicChk.checked ? '1' : '0'); } catch (e) { /* ignore */ }
-    musicChk.blur();
-  });
 
   // ---------- Board helpers ----------
 
@@ -85,13 +89,18 @@
   function isRing(c, r) { return c === 0 || r === 0 || c === N - 1 || r === N - 1; }
   function isCorner(c, r) { return (c === 0 || c === N - 1) && (r === 0 || r === N - 1); }
   function inside(c, r) { return c >= 0 && r >= 0 && c < N && r < N; }
-  // Red zones are the top and bottom bands, yellow zones the left and right ones.
+  // Red's zones are the top and bottom bands, yellow's the left and right ones.
   function zoneOwner(c, r) { return (r === 0 || r === N - 1) ? 0 : 1; }
 
-  // Colour mixing: XOR of the primaries; a pure colour keeps itself.
-  function mix(m, a) { var n = m ^ a; return n === 0 ? a : n; }
+  // Colour wheel mixing (measured on the original).
+  function mix(c, a) {
+    if (c === BROWN || c === a) return a;
+    var d = (a - c + 6) % 6;
+    if (d === 3) return BROWN;
+    return d < 3 ? (c + 1) % 6 : (c + 5) % 6;
+  }
 
-  // Ring cells in clockwise order (used for mouse walking and AI paths).
+  // Ring cells in clockwise order (mouse walking, computer paths).
   var RING = [];
   (function () {
     var c, r;
@@ -103,16 +112,16 @@
   var RING_POS = {};
   RING.forEach(function (v, k) { RING_POS[v] = k; });
 
-  // Shortest walk along the ring from a to b that avoids the cell 'block'.
+  // Shortest walk along the ring from a to b avoiding the cells in 'blocks'.
   // Returns the list of cells (without a) or null.
-  function ringPath(a, b, block) {
+  function ringPath(a, b, blocks) {
     if (a === b) return [];
     var L = RING.length, best = null;
     [1, -1].forEach(function (d) {
       var path = [], k = RING_POS[a];
       for (var n = 0; n < L; n++) {
         k = (k + d + L) % L;
-        if (RING[k] === block) return;
+        if (blocks.indexOf(RING[k]) >= 0) return;
         path.push(RING[k]);
         if (RING[k] === b) break;
       }
@@ -121,130 +130,105 @@
     return best;
   }
 
-  // Crossing line starting at ring cell s: {id, dir, cells (central), end}
+  // Crossing line starting at ring cell s: {dc, dr, cells (11 central cells), end}
   function lineFrom(s) {
     var c = colOf(s), r = rowOf(s), dc = 0, dr = 0;
     if (isCorner(c, r) || !isRing(c, r)) return null;
     if (r === 0) dr = 1; else if (r === N - 1) dr = -1; else if (c === 0) dc = 1; else dc = -1;
     var cells = [];
     for (var k = 1; k < N - 1; k++) cells.push(idx(c + dc * k, r + dr * k));
-    return { id: dc ? 'r' + r : 'c' + c, dc: dc, dr: dr, cells: cells, end: idx(c + dc * (N - 1), r + dr * (N - 1)) };
+    return { start: s, dc: dc, dr: dr, cells: cells, end: idx(c + dc * (N - 1), r + dr * (N - 1)) };
   }
 
   // ---------- Game state ----------
 
   var G = {
-    phase: 'idle',            // idle, intro, play, cross, end, over
+    phase: 'idle',            // idle, play, end, msg, over
     colors: new Uint8Array(N * N),
-    pyr: new Uint8Array(N * N),
-    pyrList: [],
+    pyr: [null, null],        // one pyramid per globule: {cell, t0}
     grey: null,
     players: [],
-    turn: 0, turnStart: 0, turnLen: 12000,
-    round: 1, roundStart: 0, results: [],
-    crossing: null, reserved: {},
-    effects: [], introStart: 0, endAt: 0,
-    twoPlayers: false, level: 0
+    turn: 1, gaugeStart: 0, frozenPx: null,
+    round: 1, roundStart: 0, results: [], times: [null, null],
+    crossing: null, effects: [], endAt: 0, endSecs: 0,
+    twoPlayers: false, level: 0, aborted: false
   };
+  var settings = { twoPlayers: false, level: 0 };
+  try {
+    settings.twoPlayers = localStorage.getItem('lehcim.colorsmix.mode') === '2';
+    settings.level = localStorage.getItem('lehcim.colorsmix.level') === '1' ? 1 : 0;
+  } catch (e) { /* ignore */ }
 
   function makePlayer(k, cell, human) {
-    return { k: k, cell: cell, from: cell, moveT: 0, dir: 0, app: k === 0 ? RED : YEL,
-      lastLine: null, human: human, target: null, nextStep: 0, plan: null, visible: true, keyT: 0 };
+    return { k: k, cell: cell, from: cell, moveT: 0, moveMs: STEP_MS, dir: k === 0 ? 2 : 3, app: BLUE,
+      human: human, hold: null, nextStep: 0, target: null, plan: null, thinkAt: 0, visible: true };
   }
 
-  // Random board: the grey globule starts in the middle, in a small region that
-  // does not touch the black ring yet.
   function newBoard() {
-    var colors = G.colors, tries = 0, gi;
-    do {
-      tries++;
-      for (var r = 0; r < N; r++) for (var c = 0; c < N; c++) {
-        colors[idx(c, r)] = isRing(c, r) ? 0 : [1, 2, 3, 4, 5, 6, 7][(Math.random() * 7) | 0];
-      }
-      gi = idx(7 + ((Math.random() * 2) | 0), 7 + ((Math.random() * 2) | 0));
-      G.pyr.fill(0);
-      var info = component(colors, gi, G.pyr);
-    } while ((info.exits > 0 || info.size > 4) && tries < 500);
-    // pyramids: 4 obstacles, away from the grey globule
-    G.pyrList = [];
-    while (G.pyrList.length < 4) {
-      var pc = 2 + ((Math.random() * 12) | 0), pr = 2 + ((Math.random() * 12) | 0), pi = idx(pc, pr);
-      if (G.pyr[pi] || Math.abs(pc - colOf(gi)) + Math.abs(pr - rowOf(gi)) < 3) continue;
-      if (G.pyrList.some(function (q) { return colOf(q) === pc || rowOf(q) === pr; })) continue;
-      G.pyr[pi] = 1; G.pyrList.push(pi);
+    for (var r = 0; r < N; r++) for (var c = 0; c < N; c++) {
+      var col;
+      if (isRing(c, r)) col = BLACK;
+      else if (c >= 5 && c <= 7 && r >= 5 && r <= 7) col = BROWN;
+      else col = START_COLOURS[(Math.random() * 5) | 0];
+      G.colors[idx(c, r)] = col;
     }
-    G.grey = { cell: gi, from: gi, t0: 0, moving: false, next: 0, dir: 2 };
-  }
-
-  // Region the grey globule can roam: cells of its colour connected to it.
-  function component(colors, start, pyr) {
-    var col = colors[start], seen = {}, q = [start], size = 0, exits = 0;
-    seen[start] = 1;
-    while (q.length) {
-      var i = q.shift(), c = colOf(i), r = rowOf(i); size++;
-      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) {
-        var nc = c + d[0], nr = r + d[1], ni = idx(nc, nr);
-        if (seen[ni]) return;
-        if (isRing(nc, nr)) { exits++; seen[ni] = 1; return; }
-        if (!pyr[ni] && colors[ni] === col) { seen[ni] = 1; q.push(ni); }
-      });
-    }
-    return { size: size, exits: exits };
   }
 
   // ---------- Round flow ----------
 
   function newGame() {
-    G.twoPlayers = modeSel.value === '2';
-    G.level = +levelSel.value;
-    G.turnLen = G.level ? 8000 : 12000;
-    G.results = [];
-    startRound(1);
+    G.twoPlayers = settings.twoPlayers;
+    G.level = settings.level;
+    G.results = []; G.times = [null, null];
+    G.aborted = false;
+    startRound(1, performance.now());
   }
 
-  function startRound(n) {
+  function startRound(n, now) {
     G.round = n;
     newBoard();
-    G.players = [makePlayer(0, idx(4, 0), G.twoPlayers), makePlayer(1, idx(N - 1, 11), true)];
-    G.players[0].dir = 2; G.players[1].dir = 3;
-    G.turn = n === 1 ? 1 : 0;        // yellow starts round 1, red round 2
-    G.crossing = null; G.reserved = {}; G.effects = [];
-    G.phase = 'intro';
-    G.introStart = performance.now();
-    Lehcim.play('s3', 0.6);
-    updateMusic();
-  }
-
-  function beginPlay(now) {
-    G.phase = 'play';
+    G.grey = { cell: idx(6, 6), from: idx(6, 6), t0: 0, moving: false, next: now + RISE_MS + 300, dir: 2, gone: false };
+    G.players = [makePlayer(0, idx(6, 0), G.twoPlayers), makePlayer(1, idx(N - 1, 6), true)];
+    G.pyr = [{ cell: idx(0, 0), t0: now }, { cell: idx(N - 1, N - 1), t0: now }];
+    G.crossing = null; G.effects = []; G.frozenPx = null;
     G.roundStart = now;
-    G.grey.next = now + 800;
-    startTurn(G.turn, now);
+    G.phase = 'play';
+    startTurn(n === 1 ? 1 : 0, now);   // yellow starts round 1, red round 2
+    Lehcim.play('s3', 0.6);
+    updateButtons();
   }
 
+  // The gauge starts once the last pyramid has risen.
   function startTurn(k, now) {
     G.turn = k;
-    G.turnStart = now;
+    G.gaugeStart = now + RISE_MS;
+    G.frozenPx = null;
     var p = G.players[k];
-    p.target = null; p.plan = null;
-    if (!p.human) p.thinkAt = now + 500;
+    p.target = null; p.plan = null; p.hold = null;
+    if (!p.human) p.thinkAt = G.gaugeStart + 150;
   }
 
-  function nextTurn(now) { startTurn(1 - G.turn, now); }
+  function gaugePx(now) {
+    if (G.frozenPx !== null) return G.frozenPx;
+    if (now <= G.gaugeStart) return GAUGE_PX;
+    return Math.max(0, GAUGE_PX - Math.floor((now - G.gaugeStart) / PX_MS[G.level]));
+  }
 
-  function roundSeconds(now) { return Math.max(0, Math.floor((now - G.roundStart) / 1000)); }
+  function roundSecs(now) { return Math.floor((now - G.roundStart) / 1000); }
 
   function endRound(winner, now) {
-    var secs = Math.max(1, Math.round((now - G.roundStart) / 1000));
+    var secs = roundSecs(now);
     G.results.push({ winner: winner, secs: secs });
+    G.times[G.round - 1] = secs;
     G.phase = 'end';
-    G.endAt = now + 2200;
+    G.endAt = now + END_MS;
     G.crossing = null;
-    var gx = cellX(G.grey.cell), gy = cellY(G.grey.cell);
-    addEffect(SMOKE_X, gx, gy, now, 70, false);
-    G.grey.gone = true;
+    G.pyr = [null, null];
+    var gr = G.grey;
+    addEffect(SMOKE_X, cellX(gr.cell), cellY(gr.cell), now, 70, false);
+    gr.gone = true;
     var lose = G.players[1 - winner], win = G.players[winner];
-    addEffect(EXPLODE_X[lose.k], cellX(lose.cell), cellY(lose.cell), now + 200, 70, false);
+    addEffect(EXPLODE_X[lose.k], cellX(lose.cell), cellY(lose.cell), now + 150, 70, false);
     lose.visible = false;
     addEffect(SMILE_X[win.k], cellX(win.cell), cellY(win.cell), now + 300, 80, true);
     win.visible = false;
@@ -254,79 +238,80 @@
   var NAMES = ['rouge', 'jaune'];
   function finishRound() {
     G.phase = 'msg';
+    updateMusic();
     var res = G.results[G.results.length - 1];
-    var text = 'Le globule ' + NAMES[res.winner] + ' a gagné en ' + res.secs + ' secondes .';
     if (G.round === 1) {
-      Lehcim.message(text + '\nLa première manche est terminée .').then(function () {
-        if (G.phase === 'msg') startRound(2);
+      Lehcim.message('Le globule ' + NAMES[res.winner] + ' a gagné en ' + res.secs + ' secondes .\n\nLa première manche est terminée .').then(function () {
+        if (G.phase === 'msg') startRound(2, performance.now());
       });
       return;
     }
-    var a = G.results[0], b = G.results[1], extra;
+    var a = G.results[0], b = G.results[1], title, text;
     if (a.winner === b.winner) {
-      extra = 'Le globule ' + NAMES[a.winner] + ' a gagné les 2 manches .\nLe globule ' + NAMES[a.winner] + ' a donc gagné la partie .';
+      title = 'Le globule ' + NAMES[a.winner] + ' a gagné les 2 manches .';
+      text = 'Le globule ' + NAMES[a.winner] + ' a donc gagné la partie .';
     } else if (a.secs === b.secs) {
-      extra = 'Chacun a gagné sa manche dans le même temps !\nLe jaune a donc gagné la partie .';
+      title = 'Chacun a gagné sa manche dans le même temps !';
+      text = 'Partie nulle.';
     } else {
-      var w = a.secs < b.secs ? a.winner : b.winner;
-      extra = 'Le globule ' + NAMES[w] + ' a donc gagné la partie .';
+      var red = a.winner === 0 ? a : b, yel = a.winner === 1 ? a : b;
+      var w = red.secs < yel.secs ? 0 : 1;
+      title = w === 0 ? 'Le globule rouge a gagné en ' + red.secs + ' s., le jaune en ' + yel.secs + ' s.'
+        : 'Le globule jaune a gagné en ' + yel.secs + ' s., le rouge en ' + red.secs + ' s.';
+      text = 'Le globule ' + NAMES[w] + ' a donc gagné la partie .';
     }
-    Lehcim.message(text + '\n' + extra).then(function () {
-      if (G.phase === 'msg') { G.phase = 'over'; updateMusic(); }
+    Lehcim.message(title + '\n\n' + text).then(function () {
+      if (G.phase === 'msg') { G.phase = 'over'; updateButtons(); updateMusic(); }
     });
   }
 
   // ---------- Moves ----------
 
-  function occupiedByGlobule(i, except) {
-    return G.players.some(function (p) { return p !== except && p.cell === i; });
+  function pyrCells() {
+    var out = [];
+    G.pyr.forEach(function (q) { if (q) out.push(q.cell); });
+    return out;
   }
-  function greyCells() { var gr = G.grey; return gr.moving ? [gr.from, gr.cell] : [gr.cell]; }
+  // Cells a walking globule may not enter: pyramids and the other globule.
+  function walkBlocks(p) { return pyrCells().concat([G.players[1 - p.k].cell]); }
 
-  // Why player p cannot cross from its cell (null when allowed).
-  function crossProblem(p) {
-    var L = lineFrom(p.cell);
-    if (!L) return 'Placez-vous sur un côté (pas dans un coin)';
-    if (L.id === p.lastLine) return 'Pas deux fois de suite au même endroit';
-    var gc = greyCells();
-    for (var k = 0; k < L.cells.length; k++) {
-      if (G.pyr[L.cells[k]]) return 'Une pyramide bloque le passage';
-      if (gc.indexOf(L.cells[k]) >= 0) return 'Le globule gris bloque le passage';
-    }
-    if (occupiedByGlobule(L.end, p)) return "La case d'arrivée est occupée";
+  // Why player p cannot cross from cell s (null when allowed).
+  function crossProblem(p, s) {
+    var L = lineFrom(s);
+    if (!L) return 'coin';
+    if (walkBlocks(p).indexOf(L.end) >= 0) return 'arrivée occupée';
     return null;
   }
 
   function tryCross(p, now) {
-    var why = crossProblem(p);
-    if (why) { flash(why, now); return false; }
+    if (G.crossing || moving(p, now)) return false;
+    if (crossProblem(p, p.cell)) return false;
     var L = lineFrom(p.cell);
-    G.crossing = { p: p, line: L, k: -1, t: now };
-    G.reserved = {};
-    L.cells.forEach(function (i) { G.reserved[i] = 1; });
-    G.reserved[L.end] = 1;
+    G.frozenPx = gaugePx(now);
+    G.pyr[p.k] = null;          // the previous pyramid of this globule disappears
+    G.crossing = { p: p, line: L, k: -1, t: now - CROSS_MS };
     p.dir = L.dc > 0 ? 1 : L.dc < 0 ? 3 : L.dr > 0 ? 2 : 0;
-    p.lastLine = L.id;
-    p.target = null; p.plan = null;
-    G.phase = 'cross';
+    p.target = null; p.plan = null; p.hold = null;
     Lehcim.play('s2', 0.6);
     return true;
   }
 
   function stepCross(now) {
     var X = G.crossing;
-    while (now - X.t >= CROSS_MS) {
+    while (G.crossing && now - X.t >= CROSS_MS) {
       X.t += CROSS_MS; X.k++;
       var p = X.p, L = X.line;
-      var cell = X.k < L.cells.length ? L.cells[X.k] : L.end;
-      p.from = p.cell; p.cell = cell; p.moveT = X.t;
-      if (X.k < L.cells.length) G.colors[cell] = mix(G.colors[cell], p.app);
-      else {
-        G.crossing = null; G.reserved = {};
+      if (X.k < L.cells.length) {
+        var cell = L.cells[X.k];
+        p.from = p.cell; p.cell = cell; p.moveT = X.t; p.moveMs = CROSS_MS;
+        G.colors[cell] = mix(G.colors[cell], p.app);
+      } else if (X.k === L.cells.length) {
+        p.from = p.cell; p.cell = L.end; p.moveT = X.t; p.moveMs = CROSS_MS;
+      } else {
+        G.crossing = null;
         p.dir = inwardDir(p.cell);
-        G.phase = 'play';
-        nextTurn(now);
-        return;
+        G.pyr[p.k] = { cell: L.start, t0: now };
+        startTurn(1 - p.k, now);
       }
     }
   }
@@ -336,23 +321,24 @@
     if (r === 0) return 2; if (r === N - 1) return 0; if (c === 0) return 1; if (c === N - 1) return 3; return 2;
   }
 
-  // One step on the black ring (keyboard direction).
+  function moving(p, now) { return now - p.moveT < p.moveMs; }
+
+  // One step on the black ring.
   function walk(p, dc, dr, now) {
     var c = colOf(p.cell) + dc, r = rowOf(p.cell) + dr;
-    p.dir = dc > 0 ? 1 : dc < 0 ? 3 : dr > 0 ? 2 : 0;
     if (!inside(c, r) || !isRing(c, r)) return false;
     var ni = idx(c, r);
-    if (occupiedByGlobule(ni, p) || (G.grey.cell === ni)) return false;
-    p.from = p.cell; p.cell = ni; p.moveT = now;
+    if (walkBlocks(p).indexOf(ni) >= 0) return false;
+    p.dir = dc > 0 ? 1 : dc < 0 ? 3 : dr > 0 ? 2 : 0;
+    p.from = p.cell; p.cell = ni; p.moveT = now; p.moveMs = STEP_MS;
     return true;
   }
   function walkTo(p, ni, now) {
-    var dc = colOf(ni) - colOf(p.cell), dr = rowOf(ni) - rowOf(p.cell);
-    return walk(p, dc, dr, now);
+    return walk(p, colOf(ni) - colOf(p.cell), rowOf(ni) - rowOf(p.cell), now);
   }
 
   function changeColour(p) {
-    p.app = PRIMARIES[(PRIMARIES.indexOf(p.app) + 1) % 3];
+    p.app = p.app === BLUE ? OWN[p.k] : BLUE;
     Lehcim.play('s4', 0.5);
   }
 
@@ -360,15 +346,15 @@
 
   function updateGrey(now) {
     var gr = G.grey;
-    if (gr.moving && now - gr.t0 >= GREY_MOVE_MS) {
+    if (gr.moving && now - gr.t0 >= GREY_MS) {
       gr.moving = false;
-      gr.next = now + 150 + Math.random() * 650;
+      gr.next = now + Math.random() * 500;
       var c = colOf(gr.cell), r = rowOf(gr.cell);
       if (isRing(c, r)) { endRound(zoneOwner(c, r), now); return; }
     }
     if (!gr.moving && now >= gr.next) {
       var opts = greyOptions(gr.cell);
-      if (!opts.length) { gr.next = now + 300; return; }
+      if (!opts.length) { gr.next = now + 200; return; }
       var ni = opts[(Math.random() * opts.length) | 0];
       var dc = colOf(ni) - colOf(gr.cell), dr = rowOf(ni) - rowOf(gr.cell);
       gr.dir = dc > 0 ? 1 : dc < 0 ? 3 : dr > 0 ? 2 : 0;
@@ -376,218 +362,272 @@
     }
   }
 
+  // Neighbours the grey globule may enter: same colour as its own cell, or black,
+  // and free of pyramids and globules.
   function greyOptions(i) {
-    var c = colOf(i), r = rowOf(i), col = G.colors[i], out = [];
+    var c = colOf(i), r = rowOf(i), col = G.colors[i], out = [], blocks = pyrCells();
+    G.players.forEach(function (p) { blocks.push(p.cell); });
     [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (d) {
-      var nc = c + d[0], nr = r + d[1], ni = idx(nc, nr);
-      if (!inside(nc, nr) || G.reserved[ni] || occupiedByGlobule(ni, null)) return;
-      if (isRing(nc, nr)) { out.push(ni); return; }
-      if (!G.pyr[ni] && G.colors[ni] === col) out.push(ni);
+      var nc = c + d[0], nr = r + d[1];
+      if (!inside(nc, nr)) return;
+      var ni = idx(nc, nr);
+      if (blocks.indexOf(ni) >= 0) return;
+      if (G.colors[ni] === BLACK || G.colors[ni] === col) out.push(ni);
     });
     return out;
   }
 
   // ---------- Computer (red globule in one-player mode) ----------
 
-  // Board evaluation from red's point of view: exits of the grey globule's region
-  // towards red zones are good, towards yellow zones bad (closer ones weigh more).
-  function evaluate(colors, greyCell, occA, occB) {
-    var col = colors[greyCell], dist = {}, q = [greyCell], head = 0;
-    var red = 0, yel = 0, minR = 99, minY = 99;
+  // Cheapest repaint distance from the grey globule's cell to each side, through
+  // cells of its colour (cost 0) or of another colour (cost 1, one more crossing).
+  // Returns red's advantage: positive when the top/bottom is closer than left/right.
+  function evaluate(colors, greyCell, blocks) {
+    var gc = colors[greyCell], dist = new Array(N * N), best = [99, 99];
+    for (var i = 0; i < N * N; i++) dist[i] = 99;
     dist[greyCell] = 0;
-    while (head < q.length) {
-      var i = q[head++], c = colOf(i), r = rowOf(i), d = dist[i];
-      minR = Math.min(minR, r - 1, N - 2 - r);
-      minY = Math.min(minY, c - 1, N - 2 - c);
+    // 0-1 BFS
+    var dq = [greyCell], head = 0;
+    while (head < dq.length) {
+      var v = dq[head++], c = colOf(v), r = rowOf(v), d = dist[v];
       for (var k = 0; k < 4; k++) {
         var nc = c + (k === 0 ? 1 : k === 1 ? -1 : 0), nr = r + (k === 2 ? 1 : k === 3 ? -1 : 0);
         var ni = nr * N + nc;
-        if (dist[ni] !== undefined) continue;
-        if (nc === 0 || nr === 0 || nc === N - 1 || nr === N - 1) {
-          dist[ni] = -1;
-          if (ni === occA || ni === occB) continue;
-          if (nr === 0 || nr === N - 1) red += 1 / (1 + d); else yel += 1 / (1 + d);
-        } else if (!G.pyr[ni] && colors[ni] === col) { dist[ni] = d + 1; q.push(ni); }
+        if (isRing(nc, nr)) {
+          if (isCorner(nc, nr)) continue;
+          var extra = blocks.indexOf(ni) >= 0 ? 0.6 : 0;
+          var side = (nr === 0 || nr === N - 1) ? 0 : 1;
+          if (d + extra < best[side]) best[side] = d + extra;
+          continue;
+        }
+        var w = colors[ni] === gc ? 0 : 1;
+        if (d + w < dist[ni]) { dist[ni] = d + w; if (w === 0) dq.splice(head, 0, ni); else dq.push(ni); }
       }
     }
-    return (red - yel) * 10 + (minY - minR) * 0.3 + (q.length > 1 ? 0 : 0);
+    var s = (best[1] - best[0]) * 10;
+    if (best[0] === 0) s += 60;      // open path to red's zones
+    if (best[1] === 0) s -= 80;      // open path to yellow's zones
+    return s;
   }
 
-  // All legal crossings for player k standing at 'pos', other globule at 'other'.
-  function legalMoves(k, lastLine, other, greyBlock) {
-    var moves = [];
+  function applyLine(colors, cells, app) {
+    var out = new Uint8Array(colors);
+    cells.forEach(function (i) { out[i] = mix(out[i], app); });
+    return out;
+  }
+
+  // Crossings player k can make: from any reachable side cell, arrival cell free.
+  function legalMoves(k, pos, otherCell, pyrs, maxSteps) {
+    var moves = [], blocks = pyrs.concat([otherCell]);
     RING.forEach(function (s) {
-      if (s === other) return;
       var L = lineFrom(s);
-      if (!L || L.id === lastLine || L.end === other) return;
-      for (var j = 0; j < L.cells.length; j++) {
-        if (G.pyr[L.cells[j]] || greyBlock.indexOf(L.cells[j]) >= 0) return;
-      }
-      PRIMARIES.forEach(function (a) { moves.push({ start: s, line: L, app: a }); });
+      if (!L || blocks.indexOf(s) >= 0 || blocks.indexOf(L.end) >= 0) return;
+      var path = ringPath(pos, s, blocks);
+      if (!path || path.length > maxSteps) return;
+      [BLUE, OWN[k]].forEach(function (a) { moves.push({ line: L, app: a, path: path }); });
     });
     return moves;
   }
 
-  function applyMove(colors, m) {
-    var out = new Uint8Array(colors);
-    m.line.cells.forEach(function (i) { out[i] = mix(out[i], m.app); });
-    return out;
-  }
-
-  // Chooses the next crossing for the computer. Time-bounded (about 250 ms max).
   function aiChoose(p, now) {
-    var other = G.players[1 - p.k], gc = greyCells(), greyCell = G.grey.cell;
-    var remaining = G.turnLen - (now - G.turnStart) - 1500;
-    var maxSteps = Math.max(0, Math.floor(remaining / (STEP_MS + 20)));
-    var moves = legalMoves(p.k, p.lastLine, other.cell, gc);
-    var t0 = performance.now(), deep = G.level === 1;
-    var scored = [];
-    moves.forEach(function (m) {
-      var path = ringPath(p.cell, m.start, other.cell);
-      if (!path || path.length > maxSteps) return;
-      var after = applyMove(G.colors, m);
-      var s1 = evaluate(after, greyCell, m.line.end, other.cell);
-      var value = s1;
-      if (deep && performance.now() - t0 < 250) {
-        // yellow's best answer (it minimises red's score)
-        var replies = legalMoves(other.k, other.lastLine, m.line.end, gc), worst = s1;
+    var other = G.players[1 - p.k];
+    var remaining = (GAUGE_PX * PX_MS[G.level]) - (now - G.gaugeStart) - 1500;
+    var maxSteps = Math.max(0, Math.floor(remaining / STEP_MS));
+    var moves = legalMoves(p.k, p.cell, other.cell, pyrCells(), maxSteps);
+    if (!moves.length) return null;
+    var deep = G.level === 1, t0 = performance.now(), greyCell = G.grey.cell;
+    var scored = moves.map(function (m) {
+      var after = applyLine(G.colors, m.line.cells, m.app);
+      // after the crossing: red's pyramid on its start cell, red on the arrival cell
+      var newPyrs = (G.pyr[other.k] ? [G.pyr[other.k].cell] : []).concat([m.line.start]);
+      var s1 = evaluate(after, greyCell, newPyrs.concat([m.line.end, other.cell]));
+      var v = s1;
+      if (deep && performance.now() - t0 < 300) {
+        // yellow's best answer from where it stands (it minimises red's score)
+        var replies = legalMoves(other.k, other.cell, m.line.end, newPyrs, 40), worst = s1;
         for (var j = 0; j < replies.length; j++) {
-          var after2 = applyMove(after, replies[j]);
-          var s2 = evaluate(after2, greyCell, m.line.end, replies[j].line.end);
+          var after2 = applyLine(after, replies[j].line.cells, replies[j].app);
+          var s2 = evaluate(after2, greyCell, [m.line.start, m.line.end, replies[j].line.start, replies[j].line.end]);
           if (s2 < worst) worst = s2;
         }
-        value = 0.45 * s1 + 0.55 * worst;
+        v = 0.4 * s1 + 0.6 * worst;
       } else if (!deep) {
-        value += Math.random() * 3;   // beginner: less precise
+        v += Math.random() * 6;
       }
-      value -= path.length * 0.01 + (m.app !== p.app ? 0.005 : 0);
-      scored.push({ m: m, v: value, path: path });
+      v -= m.path.length * 0.05 + (m.app !== p.app ? 0.02 : 0);
+      return { m: m, v: v };
     });
-    if (!scored.length) return null;
     scored.sort(function (a, b) { return b.v - a.v; });
     var pick = scored[0];
-    if (!deep && Math.random() < 0.2) pick = scored[(Math.random() * Math.min(5, scored.length)) | 0];
-    return pick;
+    if (!deep && Math.random() < 0.25) pick = scored[(Math.random() * Math.min(4, scored.length)) | 0];
+    return pick.m;
   }
 
   function updateAI(p, now) {
-    if (now < p.thinkAt) return;
+    if (now < p.thinkAt || G.crossing || moving(p, now)) return;
     if (!p.plan) {
-      var pick = aiChoose(p, now);
-      if (!pick) { p.thinkAt = now + 400; return; }
-      p.plan = { start: pick.m.start, app: pick.m.app };
-      p.thinkAt = now + 200;
+      var m = aiChoose(p, now);
+      if (!m) { p.thinkAt = now + 400; return; }
+      p.plan = { start: m.line.start, app: m.app };
+      p.thinkAt = now + 100;
       return;
     }
-    p.thinkAt = now + STEP_MS + 20;
     if (p.cell !== p.plan.start) {
-      var path = ringPath(p.cell, p.plan.start, G.players[1 - p.k].cell);
-      if (!path || !path.length || !walkTo(p, path[0], now)) p.plan = null;
+      var path = ringPath(p.cell, p.plan.start, walkBlocks(p));
+      if (!path || !path.length || !walkTo(p, path[0], now)) { p.plan = null; p.thinkAt = now + 200; }
       return;
     }
-    if (p.app !== p.plan.app) { changeColour(p); p.thinkAt = now + 220; return; }
-    if (!tryCross(p, now)) { p.plan = null; p.thinkAt = now + 150; }
+    if (p.app !== p.plan.app) { changeColour(p); p.thinkAt = now + 250; return; }
+    if (!tryCross(p, now)) { p.plan = null; p.thinkAt = now + 200; }
   }
 
   // ---------- Human input ----------
 
-  var flashMsg = null;
-  function flash(text, now) { flashMsg = { text: text, until: now + 1600 }; }
-
-  function humanPlayer(k) {
+  function activeHuman(k) {
+    if (G.phase !== 'play' || G.crossing || G.turn !== k) return null;
     var p = G.players[k];
     return p && p.human ? p : null;
   }
 
-  function act(k, action, now) {
-    if (G.phase !== 'play' || G.turn !== k) return;
-    var p = humanPlayer(k);
-    if (!p) return;
-    p.target = null;
-    if (action === 'colour') changeColour(p);
-    else if (action === 'cross') tryCross(p, now);
-    else walk(p, action[0], action[1], now);
+  function walkStep(p, d, now) {
+    if (moving(p, now)) return;
+    walk(p, d[0], d[1], now);
+    p.nextStep = now + STEP_MS;
   }
 
   var DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  function keyAction(e) {
+    var k = e.key.length === 1 ? e.key.toLowerCase() : e.key, code = e.code;
+    // red: Q Z S D (also by physical position), 2 colour, 1 crossing
+    if (k === 'z' || code === 'KeyW') return [0, DIRS.up];
+    if (k === 'q' || code === 'KeyA') return [0, DIRS.left];
+    if (k === 's' || code === 'KeyS') return [0, DIRS.down];
+    if (k === 'd' || code === 'KeyD') return [0, DIRS.right];
+    if (code === 'Digit2' || code === 'Numpad2' || k === '2' || k === 'é') return [0, 'colour'];
+    if (code === 'Digit1' || code === 'Numpad1' || k === '1' || k === '&') return [0, 'cross'];
+    // yellow: arrows, Enter colour, Space crossing
+    if (k === 'ArrowUp') return [1, DIRS.up];
+    if (k === 'ArrowDown') return [1, DIRS.down];
+    if (k === 'ArrowLeft') return [1, DIRS.left];
+    if (k === 'ArrowRight') return [1, DIRS.right];
+    if (k === 'Enter') return [1, 'colour'];
+    if (k === ' ' || code === 'Space') return [1, 'cross'];
+    return null;
+  }
+
   document.addEventListener('keydown', function (e) {
     if (document.querySelector('dialog[open]')) return;
     var t = e.target && e.target.tagName;
     if (t === 'SELECT' || t === 'INPUT') return;
-    var k = e.key.length === 1 ? e.key.toLowerCase() : e.key, code = e.code, who = -1, action = null;
-    // red: Q Z S D (also by physical position), 2 colour, 1 crossing
-    if (k === 'z' || (code === 'KeyW')) { who = 0; action = DIRS.up; }
-    else if (k === 'q' || code === 'KeyA') { who = 0; action = DIRS.left; }
-    else if (k === 's' || code === 'KeyS') { who = 0; action = DIRS.down; }
-    else if (k === 'd' || code === 'KeyD') { who = 0; action = DIRS.right; }
-    else if (code === 'Digit2' || code === 'Numpad2' || k === '2' || k === 'é') { who = 0; action = 'colour'; }
-    else if (code === 'Digit1' || code === 'Numpad1' || k === '1' || k === '&') { who = 0; action = 'cross'; }
-    // yellow: arrows, Enter colour, Space crossing
-    else if (k === 'ArrowUp') { who = 1; action = DIRS.up; }
-    else if (k === 'ArrowDown') { who = 1; action = DIRS.down; }
-    else if (k === 'ArrowLeft') { who = 1; action = DIRS.left; }
-    else if (k === 'ArrowRight') { who = 1; action = DIRS.right; }
-    else if (k === 'Enter') { who = 1; action = 'colour'; }
-    else if (k === ' ' || code === 'Space') { who = 1; action = 'cross'; }
-    if (who < 0) return;
+    var a = keyAction(e);
+    if (!a) return;
     e.preventDefault();
+    var who = a[0], action = a[1];
     if (!G.twoPlayers) who = 1;       // one player: both key sets drive yellow
-    var now = performance.now(), p = G.players[who];
+    if (e.repeat) return;
+    var now = performance.now(), p = activeHuman(who);
     if (!p) return;
-    if (e.repeat && (action === 'colour' || action === 'cross')) return;
-    if (e.repeat && now - p.keyT < 80) return;
-    p.keyT = now;
-    act(who, action, now);
+    p.target = null;
+    if (action === 'colour') changeColour(p);
+    else if (action === 'cross') tryCross(p, now);
+    else { p.hold = action; walkStep(p, action, now); }
   });
+  document.addEventListener('keyup', function (e) {
+    var a = keyAction(e);
+    if (!a || typeof a[1] === 'string') return;
+    G.players.forEach(function (p) { if (p.hold === a[1]) p.hold = null; });
+  });
+  window.addEventListener('blur', function () { G.players.forEach(function (p) { p.hold = null; }); });
 
-  // Pointer: tap a black cell to walk there, tap your globule to cross,
-  // tap a colour button (right panel) to choose the application colour.
+  // Pointer: tap a black cell to walk there (or a coloured cell: the nearest end of its
+  // row or column), tap your globule to cross, tap the right-hand panel or the
+  // indicator on the wall to change the application colour.
   canvas.addEventListener('pointerdown', function (e) {
     e.preventDefault();
-    if (G.phase !== 'play') return;
+    var p = activeHuman(G.turn);
+    if (!p) return;
     var pos = Lehcim.canvasPos(canvas, e), now = performance.now();
-    var p = G.players[G.turn];
-    if (!p.human) return;
-    // colour buttons of the active player's panel
-    var py = PANEL_Y[p.k] + 30;
-    for (var j = 0; j < 3; j++) {
-      var bx = 500 + j * 34;
-      if (pos.x >= bx && pos.x < bx + 28 && pos.y >= py && pos.y < py + 28) {
-        if (p.app !== PRIMARIES[j]) { p.app = PRIMARIES[j]; Lehcim.play('s4', 0.5); }
-        return;
-      }
+    if (pos.x >= 408 || (pos.x >= 192 && pos.x < 216 && pos.y < 24) || (pos.x >= 384 && pos.y >= 192 && pos.y < 216)) {
+      changeColour(p); return;
     }
     var c = Math.floor((pos.x - OX) / CELL), r = Math.floor((pos.y - OY) / CELL);
     if (!inside(c, r)) return;
     var i = idx(c, r);
     if (i === p.cell) { tryCross(p, now); return; }
-    if (isRing(c, r)) { p.target = i; p.nextStep = now; }
-    else {
-      // tapped inside the board: go to the nearest black cell of that row/column
-      var best = null;
-      [idx(c, 0), idx(c, N - 1), idx(0, r), idx(N - 1, r)].forEach(function (s) {
-        var path = ringPath(p.cell, s, G.players[1 - p.k].cell);
-        if (path && (!best || path.length < best.len)) best = { s: s, len: path.length };
-      });
-      if (best) { p.target = best.s; p.nextStep = now; }
-    }
+    if (isRing(c, r)) { p.target = i; return; }
+    var best = null;
+    [idx(c, 0), idx(c, N - 1), idx(0, r), idx(N - 1, r)].forEach(function (s) {
+      var path = ringPath(p.cell, s, walkBlocks(p));
+      if (path && (!best || path.length < best.len)) best = { s: s, len: path.length };
+    });
+    if (best) p.target = best.s;
   });
 
-  function updateHumanWalk(p, now) {
-    if (p.target == null || now < p.nextStep) return;
+  function updateHuman(p, now) {
+    if (moving(p, now)) return;
+    if (p.hold && now >= p.nextStep) { walkStep(p, p.hold, now); return; }
+    if (p.target == null) return;
     if (p.cell === p.target) { p.target = null; p.dir = inwardDir(p.cell); return; }
-    var path = ringPath(p.cell, p.target, G.players[1 - p.k].cell);
-    if (!path || !path.length || !walkTo(p, path[0], now)) { p.target = null; return; }
-    p.nextStep = now + STEP_MS;
+    var path = ringPath(p.cell, p.target, walkBlocks(p));
+    if (!path || !path.length || !walkTo(p, path[0], now)) p.target = null;
   }
 
-  document.getElementById('new').addEventListener('click', function (e) { e.target.blur(); newGame(); });
-  document.getElementById('abandon').addEventListener('click', function (e) {
+  // ---------- Toolbar: menus of the original ----------
+
+  function $(id) { return document.getElementById(id); }
+  function inGame() { return G.phase === 'play' || G.phase === 'end' || G.phase === 'msg'; }
+  function updateButtons() {
+    // As in the original, "Mode" and "Niveau" only open between games.
+    $('modeBtn').disabled = inGame();
+    $('levelBtn').disabled = inGame();
+  }
+
+  $('new').addEventListener('click', function (e) {
     e.target.blur();
-    if (G.phase === 'idle' || G.phase === 'over') return;
-    G.phase = 'over'; G.crossing = null; G.reserved = {};
-    statusEl.textContent = 'Partie abandonnée';
-    updateMusic();
+    if (G.phase === 'msg') return;   // a message is waiting for OK
+    newGame();
+  });
+  $('abandon').addEventListener('click', function (e) {
+    e.target.blur();
+    if (G.phase !== 'play' && G.phase !== 'end') return;
+    // The original simply freezes the board.
+    G.phase = 'over'; G.aborted = true;
+    updateButtons(); updateMusic();
+  });
+
+  function radioDialog(id, value, onOk) {
+    var d = $(id);
+    d.querySelectorAll('input[type=radio]').forEach(function (r) { r.checked = r.value === String(value); });
+    d.querySelector('.ok').onclick = function () {
+      var r = d.querySelector('input[type=radio]:checked');
+      if (r) onOk(r.value);
+      d.close();
+    };
+    d.showModal();
+  }
+  $('modeBtn').addEventListener('click', function (e) {
+    e.target.blur();
+    if (inGame()) return;
+    radioDialog('modeDlg', settings.twoPlayers ? 2 : 1, function (v) {
+      settings.twoPlayers = v === '2';
+      try { localStorage.setItem('lehcim.colorsmix.mode', v); } catch (err) { /* ignore */ }
+    });
+  });
+  $('levelBtn').addEventListener('click', function (e) {
+    e.target.blur();
+    if (inGame()) return;
+    radioDialog('levelDlg', settings.level, function (v) {
+      settings.level = v === '1' ? 1 : 0;
+      try { localStorage.setItem('lehcim.colorsmix.level', v); } catch (err) { /* ignore */ }
+    });
+  });
+  $('musicBtn').addEventListener('click', function (e) {
+    e.target.blur();
+    radioDialog('musicDlg', musicOn ? 1 : 0, function (v) {
+      musicOn = v === '1';
+      try { localStorage.setItem('lehcim.colorsmix.music', musicOn ? '1' : '0'); } catch (err) { /* ignore */ }
+      updateMusic();
+    });
   });
 
   // ---------- Effects ----------
@@ -599,113 +639,119 @@
   // ---------- Main loop ----------
 
   function update(now) {
-    if (G.phase === 'intro' && now - G.introStart > 16 * 60 + 300) beginPlay(now);
-    if (G.phase === 'play' || G.phase === 'cross') {
-      updateGrey(now);
-      if (G.phase === 'cross') stepCross(now);
-    }
     if (G.phase === 'play') {
-      var p = G.players[G.turn];
-      if (p.human) updateHumanWalk(p, now); else updateAI(p, now);
-      if (G.phase === 'play' && now - G.turnStart >= G.turnLen) {
-        Lehcim.play('s5', 0.6);
-        flash('Temps écoulé : au tour du globule ' + NAMES[1 - G.turn], now);
-        nextTurn(now);
+      updateGrey(now);
+      if (G.phase === 'play' && G.crossing) stepCross(now);
+      if (G.phase === 'play' && !G.crossing) {
+        var p = G.players[G.turn];
+        if (p.human) updateHuman(p, now); else updateAI(p, now);
+        if (!G.crossing && gaugePx(now) <= 0) {
+          // time is up: the globule whose turn it is loses the round
+          Lehcim.play('s5', 0.6);
+          endRound(1 - G.turn, now);
+        }
       }
     }
     if (G.phase === 'end' && now >= G.endAt) finishRound();
     updateMusic();
-    updateStatus(now);
+    updateStatus();
   }
 
   var lastStatus = '';
-  function updateStatus(now) {
+  function updateStatus() {
     var s;
-    if (G.phase === 'idle') s = 'Cliquez sur "Nouvelle partie"';
-    else if (G.phase === 'over') s = statusEl.textContent === 'Partie abandonnée' ? 'Partie abandonnée' : 'Partie terminée';
-    else if (G.phase === 'intro') s = 'Manche ' + G.round;
+    if (G.phase === 'idle') s = 'Cliquez sur "Nouvelle Partie"';
+    else if (G.phase === 'over') s = G.aborted ? 'Partie abandonnée' : 'Partie terminée';
     else if (G.phase === 'end' || G.phase === 'msg') s = 'Manche ' + G.round + ' terminée';
-    else s = 'Manche ' + G.round + ' - globule ' + NAMES[G.turn] + (G.players[G.turn].human ? '' : ' (ordinateur)');
+    else s = 'Manche ' + G.round + ' : au tour du globule ' + NAMES[G.turn] + (G.players[G.turn].human ? '' : ' (ordinateur)');
     if (s !== lastStatus) { statusEl.textContent = s; lastStatus = s; }
   }
 
   // ---------- Drawing ----------
 
-  function blit(sx, sy, w, h, dx, dy, dw, dh) { Lehcim.blit(g, sheet, sx, sy, w, h, dx, dy, dw, dh); }
+  function blit(sx, sy, w, h, dx, dy) { Lehcim.blit(g, sheet, sx, sy, w, h, dx, dy); }
 
+  // Metal frame, rebuilt piece by piece from the original screen.
   function drawFrame() {
-    var B = OX + N * CELL;       // 432: right/bottom wall position
-    for (var x = OX; x < B; x += 48) { blit(WALL.top[0], WALL.top[1], 48, 48, x, 0); blit(WALL.bottom[0], WALL.bottom[1], 48, 48, x, B); }
-    for (var y = OY; y < B; y += 48) { blit(WALL.left[0], WALL.left[1], 48, 48, 0, y); blit(WALL.right[0], WALL.right[1], 48, 48, B, y); }
-    blit(WALL.tl[0], WALL.tl[1], 48, 48, 0, 0); blit(WALL.tr[0], WALL.tr[1], 48, 48, B, 0);
-    blit(WALL.bl[0], WALL.bl[1], 48, 48, 0, B); blit(WALL.br[0], WALL.br[1], 48, 48, B, B);
+    blit(48, 288, 48, 48, 0, 0); blit(48, 240, 48, 48, 360, 0);
+    blit(48, 192, 48, 48, 0, 360); blit(48, 144, 48, 48, 360, 360);
+    [48, 96, 144, 216, 264, 312].forEach(function (v) {
+      blit(0, 288, 48, 48, v, 0);      // top
+      blit(0, 144, 48, 48, v, 360);    // bottom
+      blit(0, 240, 48, 48, 0, v);      // left
+      blit(0, 192, 48, 48, 360, v);    // right
+    });
+    // middle pieces (the application colour indicators sit there)
+    blit(24, 360, 24, 24, 192, 24);
+    blit(0, 336, 24, 48, 192, 360);
+    blit(48, 360, 48, 24, 0, 192);
+    blit(48, 336, 24, 24, 360, 192);
+    var red = G.players[0], yel = G.players[1];
+    var ra = red ? red.app : BLUE, ya = yel ? yel.app : BLUE;
+    blit(72, 72 + 24 * DOT[ra], 24, 24, 192, 0);
+    blit(72, 24 * DOT[ya], 24, 24, 384, 192);
   }
 
-  function lerpPos(from, to, t) {
+  function drawPanel(now) {
+    g.fillStyle = '#000'; g.fillRect(408, 0, W - 408, H);
+    for (var y = 0; y < H; y += 24) for (var x = 408; x < W; x += 24) blit(PANEL_GRID[0], PANEL_GRID[1], 24, 24, x, y);
+    // gauge: the blue bar empties from the top
+    blit(GAUGE_SPR[0], GAUGE_SPR[1], GAUGE_SPR[2], GAUGE_SPR[3], GAUGE_X, GAUGE_Y);
+    var px = GAUGE_PX;
+    if (G.phase === 'play') px = gaugePx(now);
+    else if (G.phase === 'end' || G.phase === 'msg' || G.phase === 'over') px = G.frozenPx !== null ? G.frozenPx : gaugePx(G.endAt - END_MS);
+    var empty = GAUGE_PX - px;
+    for (var i = 0; i < BAR[2]; i++) {
+      g.fillStyle = GROOVE[i];
+      g.fillRect(GAUGE_X + BAR[0] + i, GAUGE_Y + BAR[1], 1, empty);
+    }
+    // round ovals with the time of each round
+    blit(ROUNDS_SPR[0], ROUNDS_SPR[1], ROUNDS_SPR[2], ROUNDS_SPR[3], ROUNDS_X, ROUNDS_Y);
+    g.font = 'bold 13px Arial, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#000';
+    [0, 1].forEach(function (n) {
+      var t = G.times[n];
+      if (t == null && G.phase === 'play' && G.round === n + 1) t = roundSecs(now);
+      if (t != null) g.fillText(String(t), ROUNDS_X + 41, ROUNDS_Y + (n ? 65 : 18));
+    });
+    g.textAlign = 'left';
+  }
+
+  function lerp(from, to, t) {
     return { x: cellX(from) + (cellX(to) - cellX(from)) * t, y: cellY(from) + (cellY(to) - cellY(from)) * t };
+  }
+
+  function drawBoard(now) {
+    for (var r = 0; r < N; r++) for (var c = 0; c < N; c++) {
+      var i = idx(c, r), t = TILE[G.phase === 'idle' ? BLACK : G.colors[i]];
+      blit(t[0], t[1], CELL, CELL, OX + c * CELL, OY + r * CELL);
+      blit(NET[0], NET[1], CELL, CELL, OX + c * CELL, OY + r * CELL);
+    }
+    G.pyr.forEach(function (q) {
+      if (!q || G.phase === 'idle') return;
+      var f = Math.floor((now - q.t0) / (RISE_MS / 16));
+      if (f >= 15) blit(PYRAMID[0], PYRAMID[1], CELL, CELL, cellX(q.cell), cellY(q.cell));
+      else if (f >= 0) blit(RISE_X, RISE_Y + f * CELL, CELL, CELL, cellX(q.cell), cellY(q.cell));
+    });
   }
 
   function drawGlobule(sx, dir, frame, x, y) { blit(sx + frame * CELL, dir * CELL, CELL, CELL, x, y); }
 
-  function drawBoard(now) {
-    var i, c, r;
-    for (r = 0; r < N; r++) for (c = 0; c < N; c++) {
-      i = idx(c, r);
-      var t = TILE[G.colors[i]];
-      blit(t[0], t[1], CELL, CELL, OX + c * CELL, OY + r * CELL);
-    }
-    var active = (G.phase === 'play') ? G.players[G.turn] : null;
-    // note 1: the line crossed last time by the active globule is forbidden
-    if (active && active.lastLine) {
-      for (r = 1; r < N - 1; r++) for (c = 1; c < N - 1; c++) {
-        if (('c' + c) === active.lastLine || ('r' + r) === active.lastLine) blit(NET[0], NET[1], CELL, CELL, OX + c * CELL, OY + r * CELL);
-      }
-    }
-    // preview of the crossing from the active human globule's cell
-    if (active && active.human && active.target == null) {
-      var L = lineFrom(active.cell);
-      if (L) {
-        var ok = !crossProblem(active);
-        g.strokeStyle = ok ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)';
-        g.lineWidth = 2;
-        g.setLineDash([4, 4]);
-        var a = L.cells[0], b = L.cells[L.cells.length - 1];
-        var x0 = Math.min(cellX(a), cellX(b)), y0 = Math.min(cellY(a), cellY(b));
-        var x1 = Math.max(cellX(a), cellX(b)) + CELL, y1 = Math.max(cellY(a), cellY(b)) + CELL;
-        g.strokeRect(x0 + 1, y0 + 1, x1 - x0 - 2, y1 - y0 - 2);
-        g.setLineDash([]);
-      }
-    }
-    // pyramids (rising during the intro)
-    G.pyrList.forEach(function (pi) {
-      var f = 15;
-      if (G.phase === 'intro') f = Math.min(15, Math.max(0, Math.floor((now - G.introStart) / 60)));
-      blit(RISE_X, RISE_Y + f * CELL, CELL, CELL, cellX(pi), cellY(pi));
-    });
-  }
-
   function drawActors(now) {
-    // grey globule
+    if (G.phase === 'idle') return;
     var gr = G.grey;
-    if (gr && !gr.gone && G.phase !== 'idle') {
-      var t = gr.moving ? Math.min(1, (now - gr.t0) / GREY_MOVE_MS) : 1;
-      var q = lerpPos(gr.from, gr.cell, t);
-      var gf = gr.moving ? Math.floor((now - gr.t0) / 35) % 12 : Math.floor(now / 160) % 12;
-      drawGlobule(GLOB_X[2], gr.dir, gf, q.x, q.y);
+    if (gr && !gr.gone) {
+      var t = gr.moving ? Math.min(1, (now - gr.t0) / GREY_MS) : 1;
+      var q = lerp(gr.from, gr.cell, t);
+      drawGlobule(GLOB_X[2], gr.dir, Math.floor(now / 80) % 12, q.x, q.y);
     }
     G.players.forEach(function (p) {
       if (!p.visible) return;
-      var t = Math.min(1, (now - p.moveT) / (G.crossing && G.crossing.p === p ? CROSS_MS : STEP_MS));
-      var q = lerpPos(p.from, p.cell, t);
-      var moving = t < 1;
-      var f = moving ? Math.floor(now / 60) % 6 : Math.floor(now / 180) % 6;
-      if (G.phase === 'play' && G.turn === p.k && Math.floor(now / 400) % 2 === 0) {
-        g.strokeStyle = p.k === 0 ? '#ff4040' : '#ffff40';
-        g.lineWidth = 2; g.strokeRect(q.x + 1, q.y + 1, CELL - 2, CELL - 2);
-      }
-      drawGlobule(GLOB_X[p.k], p.dir, f, q.x, q.y);
+      var t2 = Math.min(1, (now - p.moveT) / p.moveMs);
+      var q2 = lerp(p.from, p.cell, t2);
+      var dir = (t2 >= 1 && !(G.crossing && G.crossing.p === p) && !p.hold && p.target == null) ? inwardDir(p.cell) : p.dir;
+      drawGlobule(GLOB_X[p.k], dir, Math.floor(now / 80) % 6, q2.x, q2.y);
     });
-    // effects (explosions, smoke, smiley)
     G.effects.forEach(function (e) {
       if (now < e.t0) return;
       var f = Math.floor((now - e.t0) / e.ms);
@@ -714,76 +760,17 @@
     });
   }
 
-  var PANEL_X = 480, PANEL_Y = [284, 364];
-  function drawPanel(now) {
-    g.fillStyle = '#000'; g.fillRect(PANEL_X, 0, 160, 480);
-    // round indicator, with the winner of each round in its oval
-    var rx = PANEL_X + 39, ry = 4;
-    blit(ROUNDS_SPR[0], ROUNDS_SPR[1], ROUNDS_SPR[2], ROUNDS_SPR[3], rx, ry);
-    [17, 65].forEach(function (oy, n) {
-      var res = G.results[n], cx = rx + 40, cy = ry + oy;
-      if (res) drawGlobule(GLOB_X[res.winner], 2, 0, cx - 12, cy - 12);
-      else if (G.phase !== 'idle' && G.phase !== 'over' && G.round === n + 1 && Math.floor(now / 500) % 2) {
-        drawGlobule(GLOB_X[2], 2, Math.floor(now / 160) % 12, cx - 12, cy - 12);
-      }
-    });
-    // timer gauge: the blue bar empties during the turn
-    var gx = PANEL_X + 39, gy = 88;
-    blit(GAUGE_SPR[0], GAUGE_SPR[1], GAUGE_SPR[2], GAUGE_SPR[3], gx, gy);
-    var frac = 1;
-    if (G.phase === 'play') frac = Math.max(0, 1 - (now - G.turnStart) / G.turnLen);
-    else if (G.phase === 'idle' || G.phase === 'over' || G.phase === 'end' || G.phase === 'msg') frac = 0;
-    var bh = GAUGE_BAR[3], empty = Math.round(bh * (1 - frac));
-    g.fillStyle = '#101028';
-    g.fillRect(gx + GAUGE_BAR[0], gy + GAUGE_BAR[1], GAUGE_BAR[2], empty);
-    if (G.phase === 'play' || G.phase === 'cross') {
-      // whose turn: the globule next to the gauge
-      drawGlobule(GLOB_X[G.turn], 2, Math.floor(now / 120) % 6, gx + 29, gy + 122);
-    }
-    // player panels
-    g.font = 'bold 13px Arial, sans-serif';
-    g.textBaseline = 'top';
-    [0, 1].forEach(function (k) {
-      var y = PANEL_Y[k], p = G.players[k];
-      g.fillStyle = k === 0 ? '#ff5050' : '#ffff50';
-      var who = (k === 0 && !G.twoPlayers && G.phase !== 'idle') ? 'Rouge (ordinateur)' : (k === 0 ? 'Globule rouge' : 'Globule jaune');
-      if (G.phase === 'idle') who = k === 0 ? 'Globule rouge' : 'Globule jaune';
-      drawGlobule(GLOB_X[k], 2, 0, 496, y);
-      g.fillText(who, 524, y + 5);
-      var app = p ? p.app : (k === 0 ? RED : YEL);
-      for (var j = 0; j < 3; j++) {
-        var col = PRIMARIES[j], bx = 500 + j * 34, by = y + 30;
-        var spr = col === app ? DOTS_ON[col] : DOTS[col];
-        blit(spr[0], spr[1], CELL, CELL, bx + 2, by + 2);
-        if (col === app) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(bx, by, 28, 28); }
-      }
-    });
-    // round time
-    g.fillStyle = '#c0c0d0';
-    var secs = 0;
-    if (G.phase === 'play' || G.phase === 'cross') secs = roundSeconds(now);
-    else if (G.results.length && (G.phase === 'end' || G.phase === 'msg' || G.phase === 'over')) secs = G.results[G.results.length - 1].secs;
-    g.fillText('Temps : ' + secs + ' s', 500, 446);
-  }
-
-  function drawFlash(now) {
-    if (!flashMsg || now > flashMsg.until) return;
-    g.font = 'bold 14px Arial, sans-serif';
-    g.textBaseline = 'middle';
-    var w = g.measureText(flashMsg.text).width + 20, x = OX + N * CELL / 2 - w / 2, y = 228;
-    g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillRect(x, y - 14, w, 28);
-    g.fillStyle = '#fff'; g.textAlign = 'center';
-    g.fillText(flashMsg.text, OX + N * CELL / 2, y);
-    g.textAlign = 'left';
-  }
-
   function draw(now) {
-    g.fillStyle = '#000'; g.fillRect(0, 0, canvas.width, canvas.height);
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
     drawFrame();
     drawBoard(now);
     drawActors(now);
     drawPanel(now);
-    drawFlash(now);
+    if (G.phase === 'idle') {
+      g.font = 'bold 14px Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = '#fff'; g.fillText('Nouvelle Partie pour commencer', OX + N * CELL / 2, OY + N * CELL / 2);
+      g.textAlign = 'left';
+    }
   }
 
   function frame(now) {
@@ -794,15 +781,15 @@
 
   // ---------- Start ----------
 
+  updateButtons();
   Lehcim.loadSheet('assets/sheet.png', KEY).then(function (s) {
     sheet = s;
     newBoard();
-    G.players = [makePlayer(0, idx(4, 0), false), makePlayer(1, idx(N - 1, 11), true)];
-    G.players[0].dir = 2; G.players[1].dir = 3;
     requestAnimationFrame(frame);
   });
 
   // Small hooks for automated tests.
   window.ColoursMix = { G: G, mix: mix, evaluate: evaluate, legalMoves: legalMoves, lineFrom: lineFrom,
-    crossProblem: crossProblem, aiChoose: aiChoose, idx: idx, newGame: newGame, endRound: endRound };
+    crossProblem: crossProblem, aiChoose: aiChoose, idx: idx, newGame: newGame, endRound: endRound,
+    settings: settings };
 })();

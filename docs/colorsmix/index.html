@@ -5,63 +5,88 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Colours-MIX - LehcimGames</title>
 <link rel="stylesheet" href="../common/style.css">
+<style>
+  canvas.game { touch-action: none; background: #000; }
+  .toolbar button:disabled { color: #808080; }
+  dialog .radios { display: flex; gap: 16px; align-items: center; }
+  dialog .radios fieldset { border: 1px solid #808080; padding: 6px 14px; margin: 0; }
+  dialog .radios label { display: block; padding: 3px 0; }
+  dialog .radios .ok { padding: 10px 14px; }
+  #help .keys { display: flex; flex-wrap: wrap; gap: 8px 48px; }
+</style>
 </head>
 <body>
 <div class="window">
-  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>Colours-MIX</span></div>
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><a href="nouveau/" style="margin-right:16px">Nouvelle version ▶</a><span>colours-MIX</span></div>
   <div class="toolbar">
-    <button id="new">Nouvelle partie</button>
+    <button id="new">Nouvelle Partie</button>
     <button id="abandon">Abandonner</button>
-    <label>Mode <select id="mode">
-      <option value="1" selected>Un joueur</option>
-      <option value="2">Deux joueurs</option>
-    </select></label>
-    <label>Niveau <select id="level">
-      <option value="0" selected>Niveau débutant</option>
-      <option value="1">Niveau confirmé</option>
-    </select></label>
-    <label><input type="checkbox" id="music" checked> Musique</label>
-    <button data-help>Règles</button>
+    <button id="musicBtn">Musique</button>
+    <button id="modeBtn">Mode</button>
+    <button id="levelBtn">Niveau</button>
+    <button data-help>Aide</button>
+    <button data-about>A propos de...</button>
     <button data-mute></button>
-    <button data-about>A propos</button>
     <span class="status" id="status"></span>
   </div>
-  <div class="stage"><canvas class="game" id="game" width="640" height="480"></canvas></div>
+  <div class="stage"><canvas class="game" id="game" width="600" height="401"></canvas></div>
   <p class="hint">Globule rouge : <kbd>Q</kbd> <kbd>Z</kbd> <kbd>S</kbd> <kbd>D</kbd> déplacements, <kbd>2</kbd> couleur, <kbd>1</kbd> traversée.
-    Globule jaune : flèches, <kbd>Entrée</kbd> couleur, <kbd>Espace</kbd> traversée.
-    Souris / tactile : touchez une case noire pour y aller, touchez votre globule pour traverser, touchez une pastille pour changer de couleur.</p>
+    Globule jaune : flèches, <kbd>Entrée</kbd> couleur, <kbd>Espace</kbd> traversée (en mode "un joueur", les deux jeux de touches dirigent le jaune).
+    Souris / tactile : touchez une case noire pour y aller, touchez votre globule pour traverser, touchez le panneau de droite pour changer de couleur.</p>
 </div>
 
-<dialog id="help"><h2>Règles du jeu</h2><div class="body">
-  <p>Le jeu se joue en 2 manches, le globule jaune commence la première, le rouge la seconde. Si chaque globule en gagne une, le vainqueur est celui qui aura remporté la sienne le plus rapidement.</p>
-  <p>Le globule rouge doit amener le globule gris dans la zone noire du haut ou dans celle du bas. Le globule jaune doit amener le même globule gris dans la zone noire de gauche ou dans celle de droite.</p>
-  <p>Le globule gris se promène au hasard mais il ne peut passer d'une case à l'autre que si leurs couleurs sont identiques ou si la seconde est noire.</p>
-  <p>Chacun leur tour, pendant une durée limitée, les globules rouge et jaune doivent se déplacer sur la zone noire. Ils peuvent changer s'ils le désirent de "couleur d'application".
-  Puis ils doivent traverser la zone centrale, les couleurs des cases rencontrées se modifiant en fonction de la "couleur d'application" choisie.</p>
-  <p>Pratiquez et vous comprendrez très vite la logique de la variation des couleurs.</p>
-  <p>Note 1 : un globule ne peut traverser deux tours de suite au même endroit.<br>
-  Note 2 : toute case occupée par un globule ou une pyramide est interdite.<br>
-  Note 3 : en mode "un joueur", le globule rouge est dirigé par l'ordinateur.</p>
-  <h3>Commandes</h3>
-  <p><b>Globule rouge :</b> déplacements : touches <kbd>Q</kbd>, <kbd>Z</kbd>, <kbd>S</kbd>, <kbd>D</kbd> ; changement de couleur : touche <kbd>2</kbd> ; traversée : touche <kbd>1</kbd>.<br>
-  <b>Globule jaune :</b> déplacements : "flèches" ; changement de couleur : "Entrée" ; traversée : "Espace".<br>
-  En mode "un joueur", les deux jeux de touches dirigent le globule jaune. A la souris ou au doigt : touchez une case noire pour y conduire votre globule, touchez votre globule pour traverser, touchez une pastille de couleur (à droite) pour la choisir.</p>
-  <h3>Précisions (portage)</h3>
-  <p>Les règles d'origine ne détaillent pas tout ; voici les choix faits pour cette version :</p>
+<dialog id="help"><h2>AIDE</h2><div class="body">
+  <p>Le jeu se joue en 2 manches, le globule jaune commence la première, le rouge la seconde. Si chaque globule en gagne une ,le vainqueur est celui qui aura remporté la sienne le plus rapidement .</p>
+  <p>Le globule rouge doit amener le globule gris dans la zone noire du haut ou dans celle du bas. Le globule jaune doit amener le même globule gris dans la zone noire de gauche ou dans celle de droite.<br>
+  Le globule gris se promène au hasard mais il ne peut passer d'une case à l'autre que si leurs couleurs sont identiques ou si la seconde est noire.</p>
+  <p>Chacun leur tour, pendant une durée limitée, les  globules rouge et jaune doivent se déplacer sur la zone noire. Ils peuvent changer s'ils le désirent de "couleur d'application".<br>
+  Puis ils doivent traverser la zone centrale, les couleurs des cases rencontrées se modifiant en fonction de la " couleur d'application" choisie.<br>
+  Pratiquez et vous comprendrez très vite la logique de la variation des couleurs.</p>
+  <p>Note 1: un globule ne peut traverser deux tours de suite au même endroit.<br>
+  Note 2: toute case occupée par un globule ou une pyramide est interdite.<br>
+  Note 3: en mode "un joueur" , le globule rouge est dirigé par l'ordinateur.</p>
+  <div class="keys">
+    <p><b>Globule rouge :</b><br>Déplacements: touches Q, Z, S, D<br>Changement de couleur: touche 2<br>Traversée: touche 1</p>
+    <p><b>Globule jaune :</b><br>Déplacements: " flèches "<br>Changement de couleur: " Entrée "<br>Traversée: " Espace "</p>
+  </div>
+  <h3>Précisions (relevées dans le programme d'origine)</h3>
   <ul>
-    <li>La zone noire est l'anneau de cases qui entoure la zone centrale. Le bord rouge du cadre indique les zones du globule rouge (haut et bas), le bord jaune celles du globule jaune (gauche et droite).</li>
-    <li>Une traversée part d'une case noire (hors coins) et va tout droit jusqu'à la zone noire d'en face, où le globule s'arrête. Elle est interdite si la ligne contient une pyramide ou le globule gris, si la case d'arrivée est occupée, ou si c'est la même ligne qu'à votre traversée précédente (repérée par un grillage).</li>
-    <li>Si la jauge se vide avant la traversée, le tour est perdu et passe à l'adversaire.</li>
-    <li>Couleurs d'application : rouge, bleu, jaune. Une case mélange les couleurs comme de la peinture : rouge + bleu = violet, bleu + jaune = vert, rouge + jaune = orange, les trois = brun. Appliquer une couleur déjà présente dans le mélange la retire (violet + rouge = bleu, brun + jaune = violet...) ; une couleur pure reste inchangée si on lui applique sa propre couleur.</li>
-    <li>Le temps d'une manche est compté en secondes depuis son début ; en cas d'égalité de temps, le jaune l'emporte (comme dans l'original).</li>
-    <li>Niveau débutant : 12 secondes par tour, ordinateur prudent. Niveau confirmé : 8 secondes par tour, ordinateur qui anticipe votre réponse.</li>
+    <li>La couleur d'application est indiquée par le voyant au milieu du mur du haut (rouge) et du mur de droite (jaune) : bleue au début de chaque manche, le rouge alterne bleu et rouge, le jaune bleu et jaune.</li>
+    <li>Une traversée part d'une case noire d'un côté (pas d'un coin) et va tout droit jusqu'au côté opposé ; une pyramide s'élève alors sur la case de départ. La case d'arrivée doit être libre.</li>
+    <li>Quand la jauge se vide, le globule dont c'est le tour perd la manche. Elle dure environ 19 secondes au niveau débutant et 10 secondes au niveau confirmé.</li>
+    <li>Si chacun gagne sa manche dans le même temps, la partie est nulle.</li>
+    <li>"Mode" et "Niveau" ne s'ouvrent qu'entre deux parties. A la souris ou au doigt : touchez une case noire pour y conduire votre globule, touchez votre globule pour traverser, touchez le panneau de droite pour changer de couleur.</li>
   </ul>
 </div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
+<dialog id="modeDlg"><div class="body radios">
+  <fieldset><legend>Nombre de joueurs</legend>
+    <label><input type="radio" name="mode" value="2"> Deux joueurs</label>
+    <label><input type="radio" name="mode" value="1"> Un joueur</label>
+  </fieldset><button class="ok">OK</button>
+</div></dialog>
+
+<dialog id="levelDlg"><div class="body radios">
+  <fieldset><legend>Niveau</legend>
+    <label><input type="radio" name="level" value="0"> Niveau débutant</label>
+    <label><input type="radio" name="level" value="1"> Niveau confirmé</label>
+  </fieldset><button class="ok">OK</button>
+</div></dialog>
+
+<dialog id="musicDlg"><h2>Musique</h2><div class="body radios">
+  <fieldset><legend>Musique activée</legend>
+    <label><input type="radio" name="music" value="1"> OUI</label>
+    <label><input type="radio" name="music" value="0"> NON</label>
+  </fieldset><button class="ok">OK</button>
+</div></dialog>
+
 <dialog id="about"><h2>A propos de...</h2><div class="body">
-  <p><b>Colours-MIX</b><br>Concepteur : Lehcim Noil<br>Musique : Nivek<br>Version 2</p>
-  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation.</p>
-  <p>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes et ses sons d'origine.</p>
+  <p><b>colours-MIX</b></p>
+  <p>Concepteur : Lehcim Noil<br>Musique : Nivek &nbsp; Version 2<br>Adresse : LehcimNoil@flashyland.com</p>
+  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation .</p>
+  <p>Configuration conseillée : 256 couleurs - 640*480</p>
+  <p>Mises à jour et autres jeux sur le site : http://lehcim.flashyland.com (site d'origine, historique)</p>
+  <p><i>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes, ses sons et sa musique d'origine. Les règles (mélange des couleurs, traversées, jauge, ordinateur) ont été relevées dans le programme d'origine.</i></p>
 </div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
 <script src="../common/lehcim.js"></script>
