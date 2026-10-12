@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#c2410c">
+<title>Awélé (nouvelle version) - LehcimGames</title>
+<link rel="stylesheet" href="../../common/nouveau.css">
+<style>
+  #game { cursor: default; outline: none; }
+  #game:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent); }
+  .score .p .of { font-size: 13px; color: var(--ink-2); font-weight: 500; }
+  .score .bar { height: 6px; border-radius: 3px; background: var(--line); margin-top: 6px; overflow: hidden; }
+  .score .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .score .p.cpu .bar i { background: var(--ink-2); }
+  .status { display: flex; align-items: center; gap: 8px; }
+  .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; flex: none; }
+  .spin[hidden] { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .preview { margin-top: 6px; font-size: 14px; color: var(--ink); min-height: 1.4em; }
+  .preview b { color: var(--accent); }
+  .btnrow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .btnrow .wide { grid-column: 1 / -1; }
+  .moves { display: flex; flex-wrap: wrap; gap: 4px; min-height: 28px; max-height: 150px; overflow: auto; font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .moves span { display: inline-flex; align-items: center; gap: 3px; padding: 4px 6px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); }
+  .moves span small { font-weight: 400; color: var(--ink-2); font-size: 10px; }
+  .moves span.p0 { color: var(--accent); }
+  .moves span.last { border-color: var(--accent); }
+  .moves .empty { background: none; border: 0; color: var(--ink-2); font: 14px system-ui, sans-serif; padding: 4px 0; }
+  .logbtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .logbtns .btn { min-height: 34px; font-size: 14px; padding: 0 10px; }
+  details { margin-top: 8px; font-size: 14px; }
+  details summary { cursor: pointer; color: var(--ink-2); }
+  details pre { white-space: pre-wrap; word-break: break-all; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; max-height: 220px; overflow: auto; }
+  .meta { font-size: 14px; color: var(--ink-2); margin-bottom: 8px; }
+  .overlay .btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+  .overlay .big { font-size: clamp(28px, 6vw, 44px); font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .overlay .tiny { font-size: 14px; color: #d6d1c7; }
+  .overlay .card-in { background: rgba(0, 0, 0, .35); border-radius: 12px; padding: 10px 14px; }
+  .field .seg { align-self: flex-start; }
+  .keys kbd + kbd { margin-left: 2px; }
+  .overlay { background: rgba(0, 0, 0, .35); }
+  .overlay .card-in { display: flex; flex-direction: column; align-items: center; gap: 10px; background: rgba(8, 12, 40, .86); border: 1px solid rgba(255, 255, 255, .15); border-radius: 14px; padding: 16px 22px; max-width: 92%; max-height: 100%; overflow: auto; }
+  @media (max-width: 520px) {
+    .nv-top .badge, #new .long { display: none; }
+    .nv-top .actions { gap: 2px; }
+    .overlay { gap: 6px; padding: 6px; }
+    .overlay .card-in { padding: 8px 12px; gap: 6px; }
+    .overlay h2 { font-size: 20px; }
+    .overlay .txt { display: none; }
+    .overlay .big { font-size: 26px; }
+    .overlay .btns { flex-wrap: nowrap; gap: 6px; }
+    .overlay .btns .btn { padding: 0 10px; font-size: 14px; white-space: nowrap; }
+    .overlay p { font-size: 13px; }
+    .overlay .tiny { display: none; }
+    .overlay .btn { min-height: 36px; }
+  }
+</style>
+</head>
+<body>
+<header class="nv-top">
+  <a class="back" href="../../index.html#awele">← <span>Accueil</span></a>
+  <h1>Awélé</h1>
+  <span class="badge">Nouvelle version</span>
+  <span class="grow"></span>
+  <div class="actions">
+    <button class="btn primary" id="new" aria-label="Nouvelle partie"><span>Nouvelle</span><span class="long">partie</span></button>
+    <button class="btn icon ghost" data-help title="Règles" aria-label="Règles">?</button>
+    <button class="btn icon ghost" id="settingsBtn" title="Réglages" aria-label="Réglages">⚙</button>
+    <button class="btn icon ghost" data-mute title="Son" aria-label="Son"></button>
+  </div>
+</header>
+
+<main class="nv-main">
+  <div class="nv-stage" id="stage">
+    <canvas id="game" width="1280" height="800" tabindex="0" role="img" aria-label="Plateau d'Awélé. Touches 1 à 6 ou A à F pour jouer une case, flèches pour choisir, Entrée pour jouer."></canvas>
+    <div class="overlay" id="overlay" hidden></div>
+  </div>
+  <aside class="nv-side">
+    <section class="card" aria-live="polite">
+      <div class="status" id="status"><span class="spin" id="spin" hidden></span><span id="statusText">Chargement...</span></div>
+      <div class="sub" id="substatus"></div>
+      <div class="preview" id="preview"></div>
+    </section>
+    <section class="card">
+      <h2>Graines gagnées</h2>
+      <div class="score">
+        <div class="p" id="sc0"><div class="n">Toi (en bas)</div><div class="v"><span id="s0">0</span> <span class="of">/ 25</span></div><div class="bar"><i id="bar0"></i></div></div>
+        <div class="p cpu" id="sc1"><div class="n">Ordinateur</div><div class="v"><span id="s1">0</span> <span class="of">/ 25</span></div><div class="bar"><i id="bar1"></i></div></div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="btnrow">
+        <button class="btn" id="undo" title="Annuler le dernier coup (U)">↶ Annuler</button>
+        <button class="btn" id="hint" title="Demander un indice (I)">💡 Indice</button>
+        <button class="btn wide ghost" id="abandon">Abandonner</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Partie</h2>
+      <div class="meta" id="meta"></div>
+      <div class="moves" id="moves" aria-label="Coups joués"></div>
+      <div class="logbtns">
+        <button class="btn" id="logDownload">⬇ AwParties.txt</button>
+        <button class="btn ghost" id="logCopy">Copier</button>
+      </div>
+      <details><summary>Voir le fichier des parties de la session</summary><pre id="logText"></pre></details>
+    </section>
+    <section class="card">
+      <h2>Tes résultats</h2>
+      <dl class="rows" id="stats"></dl>
+    </section>
+  </aside>
+</main>
+
+<footer class="nv-foot">
+  <a href="../">Version d'origine</a>
+  <a href="../algorithme.html">L'algorithme</a>
+  <a href="../../index.html">Tous les jeux</a>
+</footer>
+
+<dialog id="help"><div class="d-head"><h2>Règles du jeu d'Awélé</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <p>Le jeu se joue à 2. L'ordinateur possède les 6 cases du dessus, tu as les 6 cases du bas. La grande case de gauche sert à ranger les graines gagnées par l'ordinateur, celle de droite sert à ranger les tiennes.</p>
+    <p>A tour de rôle, chaque joueur doit choisir une de ses cases, prendre toutes les graines s'y trouvant, puis les répartir une à une dans les cases qui suivent à l'exclusion de la case de départ, en tournant dans le sens inverse des aiguilles d'une montre.</p>
+    <p>Ainsi, s'il a plus de 11 graines à distribuer, il aura fait un tour complet : en effet, la case d'origine devant rester vide, la douzième graine se retrouvera dans la même case que la première.</p>
+    <p>Lorsque la distribution est terminée, le joueur regarde la case où il a posé la dernière graine. Si cette case est du côté de l'adversaire et si elle contient 2 ou 3 graines, alors le joueur les prend et les dépose dans la grande case prévue à cet effet.</p>
+    <p>Puis il fait de même avec la case qui suit (dans le sens des aiguilles d'une montre).</p>
+    <p>La prise s'arrête si la case a moins de 2 graines, ou si elle en a plus de 3, ou si elle appartient au joueur.</p>
+    <p>Si l'adversaire n'a plus de graine dans ses cases, alors le joueur qui a la main est tenu de l'alimenter s'il le peut.</p>
+    <p>La partie s'arrête dès qu'un joueur a gagné plus de 24 graines.</p>
+    <p>Si un joueur ne peut pas jouer, il passe son tour.</p>
+    <h3>Règles usuelles</h3>
+    <p>Usuellement, un joueur qui aurait pris toutes les graines du côté de son adversaire lui en laisse une dans la dernière case examinée pour qu'il puisse jouer à son tour. S'il reste moins de 7 graines sur le jeu, alors la partie est nulle.</p>
+    <h3>Règles de tournoi</h3>
+    <p>En tournoi, la prise totale est autorisée. De plus, si un joueur n'a plus de graine alors que c'est à lui de jouer, son adversaire ramasse toutes les graines de son côté et la partie s'arrête. En cas de position répétée avec moins de 7 graines sur le plateau, chacun ramasse les graines de son côté et la partie s'arrête.</p>
+    <h3>Précisions (comme dans le jeu d'origine)</h3>
+    <p>Un coup qui laisserait l'adversaire sans aucune graine est refusé, sauf s'il n'y en a pas d'autre. En règles usuelles, la nulle à moins de 7 graines s'applique même si un joueur mène. Une case montre au plus 11 billes vertes ; chaque bille rouge dans les petits trous à côté vaut 11 graines de plus.</p>
+    <h3>Aides de cette version</h3>
+    <p>Survole (ou touche une fois) une de tes cases : la case où tombera la dernière graine est entourée et les prises sont marquées en rouge avec leur nombre de graines. <b>Annuler</b> revient à ton coup précédent, <b>Indice</b> demande à l'ordinateur ce qu'il jouerait à ta place. Un anneau pâle marque la dernière case jouée de chaque côté. Le nombre de graines de chaque case peut aussi s'afficher sur la case (réglages).</p>
+    <h3>Clavier</h3>
+    <div class="keys">
+      <span><kbd>1</kbd>..<kbd>6</kbd> <kbd>A</kbd>..<kbd>F</kbd></span><span>jouer la case A à F</span>
+      <span><kbd>←</kbd> <kbd>→</kbd> <kbd>Entrée</kbd></span><span>choisir une case et la jouer</span>
+      <span><kbd>U</kbd></span><span>annuler</span>
+      <span><kbd>I</kbd></span><span>indice</span>
+      <span><kbd>N</kbd></span><span>nouvelle partie</span>
+    </div>
+    <h3>Enregistrement des parties</h3>
+    <p>Les parties de la session sont notées comme dans le fichier AwParties.txt du jeu original : pour l'ordinateur <b>f e d c b a</b> (de gauche à droite), pour le joueur <b>A B C D E F</b>. Tu peux le télécharger depuis la carte "Partie".</p>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">J'ai compris</button></div></dialog>
+
+<dialog id="settings"><div class="d-head"><h2>Réglages</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <div class="field"><span class="label">Règles</span>
+      <div class="seg" data-set="mode" role="group" aria-label="Règles"><button data-v="0">Usuelles</button><button data-v="1">Tournoi</button></div></div>
+    <div class="field"><span class="label">Niveau de l'ordinateur</span>
+      <div class="seg" data-set="level" role="group" aria-label="Niveau"><button data-v="1">1 novice</button><button data-v="2">2</button><button data-v="3">3 amateur</button><button data-v="4">4</button><button data-v="5">5 expert</button><button data-v="6">Maître</button></div>
+      <span class="sub">Niveaux 1 à 5 : l'ordinateur d'origine (1, 3, 5, 7 ou 9 demi-coups). Maître : la nouvelle recherche, bien plus forte.</span></div>
+    <div class="field"><span class="label">Qui commence</span>
+      <div class="seg" data-set="starter" role="group" aria-label="Qui commence"><button data-v="0">Moi</button><button data-v="1">L'ordinateur</button><button data-v="2">Chacun son tour</button></div></div>
+    <div class="field"><span class="label">Vitesse des animations</span>
+      <div class="seg" data-set="speed" role="group" aria-label="Vitesse des animations"><button data-v="0">Comme l'original</button><button data-v="1">Rapide</button><button data-v="2">Très rapide</button><button data-v="3">Instantanée</button></div></div>
+    <label class="switch">Nombre de graines affiché dans les cases<input type="checkbox" data-set="counts"></label>
+    <label class="switch">Aperçu du coup (dernière graine et prises)<input type="checkbox" data-set="preview"></label>
+    <label class="switch">Écran tactile : toucher deux fois pour jouer<input type="checkbox" data-set="confirm"></label>
+    <p class="sub" id="settingsNote">Règles, niveau et premier joueur s'appliquent à la prochaine partie (tout de suite si aucun coup n'a été joué).</p>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="../../common/lehcim.js"></script>
+<script src="engine.js"></script>
+<script src="../layouts.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
