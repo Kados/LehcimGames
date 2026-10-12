@@ -67,7 +67,51 @@
       <li><b>Recherche à faible profondeur pour le ver confirmé.</b> Une recherche minimax de 2 ou 3 cases (ver, puis poisson, puis ver), avec le territoire comme évaluation, éviterait les pièges que la note d'une seule case ne voit pas. Avec 5 coups par animal, cela reste quelques centaines de BFS par décision, encore supportable. Effort : moyen, dans <code>flee</code>.</li>
     </ol>
 
-    <div class="nav"><a href="./">▶ Jouer à KevGame</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+    <h2>Dans la nouvelle version</h2>
+    <p>La <a href="nouveau/">nouvelle version</a> garde les règles, les graphismes, les sons et la musique d'origine. Son moteur (<code>nouveau/engine.js</code>) reprend celui-ci et applique cinq des six pistes ci-dessus. Les chiffres viennent de manches jouées par l'ordinateur contre lui-même dans node, avec le pas fixe de 0,02 s et les mêmes graines pour chaque série (200 manches par ligne).</p>
+
+    <h3>Les cas limites de la respiration (piste 2)</h3>
+    <p>Quand toutes les zones sont murées, l'animal vise maintenant la zone la plus proche <em>à travers les murs</em> (BFS avec <code>ignoreWalls</code> depuis lui), et non plus <code>ZONES[0]</code>. Sans pétard, il va chercher celui qui est dans son enclos ; s'il n'y en a pas, il attend contre le mur le plus proche de la zone. Deux situations construites à la main le montrent :</p>
+    <table>
+      <tr><th>Situation</th><th>Version d'origine</th><th>Nouvelle version</th></tr>
+      <tr><td>Ver enfermé près de la zone (17,10), murs épais de 3 cases en haut et à gauche, fins à droite et en bas ; un pétard, 20 % d'air</td><td>part vers le haut (ZONES[0]), ne perce pas le mur épais, meurt étouffé</td><td>part vers le bas, perce le mur fin, respire au bout de 3,2 s</td></tr>
+      <tr><td>Bassin coupé en deux, zones de droite murées, pas de pétard en main, un pétard à 8 cases ; 55 % d'air</td><td>ne va pas le chercher, meurt étouffé</td><td>ramasse le pétard, perce le mur, respire au bout de 13,9 s</td></tr>
+    </table>
+
+    <h3>Les égalités tirées au hasard (piste 5)</h3>
+    <p><code>downhill</code> tire maintenant au hasard parmi les voisins à égalité. Poisson en (5,3), ver en (10,8), 400 essais : la version d'origine choisit 400 fois « droite » ; la nouvelle 188 fois « droite » et 212 fois « bas ».</p>
+
+    <h3>Graine et pas fixe (piste 3)</h3>
+    <p>Un générateur mulberry32 remplace <code>Math.random</code>, et la page fait avancer la simulation par pas fixes de 0,02 s (accumulateur). Une manche ordinateur contre ordinateur avec la même graine se rejoue à l'identique (même résultat, même trajectoire). La graine de chaque partie est affichée et peut être imposée dans les réglages.</p>
+
+    <h3>Une table de niveaux et un niveau « expert » (pistes 1, 4 et 6)</h3>
+    <p>Tous les réglages sont rassemblés dans <code>LEVELS</code> : débutant et confirmé gardent leurs valeurs d'origine (avec les corrections ci-dessus), et un troisième niveau, <b>expert</b>, ajoute :</p>
+    <ul>
+      <li><b>un ver qui cherche à 3 coups</b> : le ver joue, le poisson répond par le pire coup pour lui, le ver joue encore ; la note d'une position additionne le territoire (les cases que le ver atteint avant le poisson), 4 fois la distance au poisson et un bonus pour chaque zone à bulles qu'il atteint le premier. Les cartes de distances sont mises en cache par case : une vingtaine de BFS par décision.</li>
+      <li><b>un ver qui respire quand c'est sans danger</b> : c'était la vraie faiblesse. Dans la version d'origine, presque toutes les prises arrivent quand le ver, à court d'air, file vers une zone avec le poisson sur les talons. Le ver expert fait le plein dès qu'une zone lui donne assez d'avance sur le poisson (distances BFS réelles, pas à vol d'oiseau), et sinon choisit la zone où son avance est la plus grande.</li>
+      <li><b>un poisson qui garde les zones</b> : il prévoit la zone où le ver a le plus d'avance et va s'y placer s'il peut y être au plus 2 cases après lui ; le ver ne trouve alors plus de zone sûre. Il reprend la chasse simple à 2 cases du ver, ou quand l'écart s'est réduit de 3 cases sur ses 12 dernières décisions (un ver maladroit se fait simplement poursuivre).</li>
+      <li><b>un poisson qui pose des murs</b> : avant chaque case, il essaie le mur qu'il poserait derrière lui ; il le construit si cela retire au moins 12 cases à l'espace du ver (ou rallonge son chemin vers l'air quand l'air du ver baisse), sans jamais s'enfermer lui-même. Il en pose de 0,05 à 0,2 par manche, contre jamais auparavant.</li>
+      <li><b>un poisson qui respire au bon moment</b> : il fait le plein quand le ver est loin ou en train de respirer, au lieu d'attendre d'y être obligé au milieu d'une poursuite, et quitte une zone dès que le ver passe à 3 cases.</li>
+    </ul>
+    <p>Essais abandonnés : un poisson qui choisit la case réduisant le plus le territoire du ver (une sorte de Voronoï inversé), et un poisson qui fait la même recherche à 3 coups que le ver. Les deux attrapent moins souvent le ver expert que la simple chasse (22 et 15 manches sur 60, contre 27, mesurés sur une version intermédiaire du ver expert).</p>
+
+    <table>
+      <tr><th>Poisson contre ver (200 manches)</th><th>Le poisson gagne</th><th>Prise en moyenne</th></tr>
+      <tr><td>Confirmé d'origine contre confirmé d'origine</td><td>187 (93,5 %)</td><td>33,3 s</td></tr>
+      <tr><td>Débutant d'origine contre débutant d'origine</td><td>195 (97,5 %)</td><td>34,7 s</td></tr>
+      <tr><td>Nouveau confirmé contre nouveau confirmé</td><td>187 (93,5 %)</td><td>39,3 s</td></tr>
+      <tr><td>Expert contre confirmé d'origine</td><td>197 (98,5 %)</td><td>30,1 s</td></tr>
+      <tr><td>Expert contre nouveau confirmé</td><td>194 (97 %)</td><td>32,4 s</td></tr>
+      <tr><td>Confirmé d'origine contre ver expert</td><td>44 (22 %)</td><td>52,6 s</td></tr>
+      <tr><td>Nouveau confirmé contre ver expert</td><td>49 (24,5 %)</td><td>49,3 s</td></tr>
+      <tr><td>Expert contre expert</td><td>96 (48 %)</td><td>53,2 s</td></tr>
+    </table>
+    <p>Autrement dit, le ver expert résiste 3 fois sur 4 au poisson d'origine (contre 1 fois sur 15 pour le ver confirmé), et le poisson expert double le taux de prise contre ce ver. Les trois niveaux restent bien séparés. La décision la plus chère (ver expert) prend en moyenne moins de 0,1 ms et au pire environ 16 ms dans node, une fois par case : la page n'a pas besoin d'un Web Worker.</p>
+
+    <h3>Côté jeu</h3>
+    <p>Compte à rebours avant chaque manche avec rappel du rôle (« Vous êtes le VER »), pause (bouton, <kbd>P</kbd>, <kbd>Échap</kbd>, et automatique quand l'onglet est caché), panneau latéral avec le temps restant, les jauges d'air, les murs en réserve et la charge du pétard des deux joueurs, résumé de chaque manche (respirations, murs, démolitions, bonus), records par niveau, croix tactile et boutons Mur / Pétard, et mémoire des appuis : un appui bref sur une direction est gardé jusqu'à la prochaine case (0,45 s au plus), si bien qu'un virage n'est plus perdu quand on relâche la touche trop tôt.</p>
+
+    <div class="nav"><a href="./">Version d'origine</a><a href="nouveau/">▶ Jouer à la nouvelle version</a><a href="../index.html">◀ Retour à l'accueil</a></div>
   </div>
 </div>
 </body>

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#c2410c">
+<title>KevGame (nouvelle version) - LehcimGames</title>
+<link rel="stylesheet" href="../../common/nouveau.css">
+<style>
+  /* KevGame specific additions to the shared shell */
+  .nv-stage { min-height: 200px; }
+  .nv-stage canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+  .overlay .btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .overlay ul { margin: 0; padding: 0 0 0 1.2em; text-align: left; max-width: 46ch; color: #e8e4dc; }
+  .overlay li { margin: 2px 0; }
+  .overlay .big { font-size: clamp(18px, 3vw, 22px); font-weight: 600; color: #ffd34d; }
+  .overlay table { border-collapse: collapse; font-size: 14px; color: #e8e4dc; }
+  .overlay th, .overlay td { padding: 2px 8px; text-align: center; }
+  .overlay th:first-child, .overlay td:first-child { text-align: left; }
+  .overlay kbd { color: #1d1b18; }
+  .overlay { overflow: auto; justify-content: safe center; }
+  @media (max-width: 520px) {
+    .nv-top .badge { display: none; }
+    .nv-top .actions { gap: 2px; }
+    .nv-top .btn.icon { width: 36px; }
+    .nv-top #new { padding: 0 10px; font-size: 14px; white-space: nowrap; }
+    .nv-top [data-mute] { width: 32px; padding: 0 0 0 6px; overflow: hidden; white-space: nowrap; justify-content: flex-start; }
+    .overlay { gap: 8px; padding: 10px; }
+    .overlay ul, .overlay .hide-s { display: none; }
+    .overlay p { font-size: 14px; }
+  }
+
+  .timer { display: flex; align-items: baseline; gap: 8px; }
+  .timer .v { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .timer.hurry .v { color: var(--bad); }
+  .bar { height: 8px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 100%; background: var(--accent); border-radius: 99px; transition: width .2s linear; }
+  .bar.air > i { background: #38bdf8; }
+  .bar.air.low > i { background: var(--bad); }
+  .bar.petard > i { background: #f59e0b; }
+
+  .players { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  @media (max-width: 900px) { .players { grid-template-columns: 1fr 1fr; } }
+  #overlay { background: rgba(0, 0, 0, .72); }
+  .pl { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; border: 2px solid transparent; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .pl.me { border-color: var(--accent); }
+  .pl .who { display: flex; align-items: center; gap: 6px; }
+  .pl canvas { width: 32px; height: 32px; image-rendering: pixelated; background: #5fb7e6; border-radius: 8px; flex: none; }
+  .pl .n { font-weight: 700; font-size: 15px; line-height: 1.2; }
+  .pl .who > div { min-width: 0; }
+  .pl .r { font-size: 13px; color: var(--ink-2); }
+  .pl .l { font-size: 12px; color: var(--ink-2); display: flex; justify-content: space-between; }
+  .pl .walls { letter-spacing: 2px; font-size: 13px; }
+
+  .touchpad { padding: 0; }
+  .touch { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 50px); gap: 6px; touch-action: none; }
+  .touch .btn { min-width: 0; min-height: 0; width: 100%; height: 100%; padding: 0; font-size: 22px; }
+  .touch .u { grid-area: 1 / 2; } .touch .l { grid-area: 2 / 1; } .touch .r { grid-area: 2 / 3; } .touch .d { grid-area: 3 / 2; }
+  .touch .c { grid-area: 2 / 2; font-size: 14px; }
+  .acts { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+  .acts .btn { min-width: 112px; min-height: 50px; font-size: 16px; touch-action: none; }
+  .btn.pressed { background: var(--accent-soft); border-color: var(--accent); }
+
+  .res { font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+  .res .muted { color: var(--ink-2); }
+  .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row-btns .btn { flex: 1; }
+  .seed { display: flex; gap: 8px; }
+  .seed input { flex: 1; min-width: 0; }
+  @media (pointer: coarse) { .keys-card { display: none; } }
+</style>
+</head>
+<body>
+<header class="nv-top">
+  <a class="back" href="../../index.html#kevgame">← <span>Accueil</span></a>
+  <h1>KevGame</h1>
+  <span class="badge">Nouvelle version</span>
+  <span class="grow"></span>
+  <div class="actions">
+    <button class="btn primary" id="new">Nouvelle partie</button>
+    <button class="btn icon ghost" data-help title="Règles" aria-label="Règles">?</button>
+    <button class="btn icon ghost" id="settingsBtn" title="Réglages" aria-label="Réglages">⚙</button>
+    <button class="btn ghost" data-mute title="Son" aria-label="Son"></button>
+  </div>
+</header>
+
+<main class="nv-main">
+  <div class="nv-stage" id="stage">
+    <canvas id="game" width="600" height="408" aria-label="Piscine : le poisson poursuit le ver"></canvas>
+    <div class="overlay" id="overlay" hidden></div>
+  </div>
+  <aside class="nv-side">
+    <div class="touchpad" id="touchpad" aria-label="Commandes tactiles">
+      <div class="touch">
+        <button class="btn u" data-dir="0" aria-label="Haut">▲</button>
+        <button class="btn l" data-dir="3" aria-label="Gauche">◀</button>
+        <button class="btn c" id="tPause" aria-label="Pause">❚❚</button>
+        <button class="btn r" data-dir="1" aria-label="Droite">▶</button>
+        <button class="btn d" data-dir="2" aria-label="Bas">▼</button>
+      </div>
+      <div class="acts">
+        <button class="btn" id="tWall" aria-label="Construire un mur">Mur</button>
+        <button class="btn" id="tBoom" aria-label="Démolition">Pétard</button>
+      </div>
+    </div>
+
+    <section class="card" aria-live="polite">
+      <div class="status" id="status"></div>
+      <div class="sub" id="substatus"></div>
+    </section>
+
+    <section class="card">
+      <h2 id="roundTitle">Manche</h2>
+      <div class="timer" id="timer"><span class="v" id="timeLeft">90</span><span class="sub">secondes restantes</span></div>
+      <div class="bar" style="margin-top:6px"><i id="timeBar"></i></div>
+    </section>
+
+    <section class="card">
+      <h2>Joueurs</h2>
+      <div class="players">
+        <div class="pl" id="pl0">
+          <div class="who"><canvas width="24" height="24" aria-hidden="true"></canvas><div style="min-width:0"><div class="n"></div><div class="r"></div></div></div>
+          <div class="l"><span>Air</span><span class="airv">100 %</span></div>
+          <div class="bar air"><i></i></div>
+          <div class="l"><span>Murs</span><span class="walls"></span></div>
+          <div class="l"><span>Pétard</span><span class="pv">-</span></div>
+          <div class="bar petard"><i style="width:0"></i></div>
+        </div>
+        <div class="pl" id="pl1">
+          <div class="who"><canvas width="24" height="24" aria-hidden="true"></canvas><div style="min-width:0"><div class="n"></div><div class="r"></div></div></div>
+          <div class="l"><span>Air</span><span class="airv">100 %</span></div>
+          <div class="bar air"><i></i></div>
+          <div class="l"><span>Murs</span><span class="walls"></span></div>
+          <div class="l"><span>Pétard</span><span class="pv">-</span></div>
+          <div class="bar petard"><i style="width:0"></i></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row-btns">
+        <button class="btn" id="pauseBtn" aria-pressed="false">Pause</button>
+        <button class="btn" id="abandon">Abandonner</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Résultats</h2>
+      <div class="res" id="results"><span class="muted">Aucune manche jouée.</span></div>
+    </section>
+
+    <section class="card">
+      <h2>Vos records</h2>
+      <div class="res" id="records"></div>
+    </section>
+
+    <section class="card keys-card">
+      <h2>Touches</h2>
+      <div class="res">
+        <div><b>Joueur de droite</b> : flèches, mur <kbd>Espace</kbd>, pétard <kbd>Entrée</kbd> (ou <kbd>Alt Gr</kbd>, <kbd>Ctrl</kbd> droit)</div>
+        <div><b>Joueur de gauche</b> : <kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> (<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> en QWERTY), mur <kbd>1</kbd>, pétard <kbd>2</kbd></div>
+        <div><b>Pause</b> : <kbd>P</kbd> ou <kbd>Échap</kbd></div>
+        <p class="sub" style="margin:4px 0 0">Contre l'ordinateur, vous êtes le joueur de droite et les deux jeux de touches marchent. Un appui bref sur une direction est retenu jusqu'à la prochaine case.</p>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<footer class="nv-foot">
+  <a href="../">Version d'origine</a>
+  <a href="../algorithme.html">L'algorithme</a>
+  <a href="../../index.html">Tous les jeux</a>
+</footer>
+
+<dialog id="help"><div class="d-head"><h2>Règles du jeu</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <p>Le jeu se joue en 2 manches. Si chaque joueur en gagne une, le vainqueur est celui qui aura remporté la sienne le plus rapidement.</p>
+    <p>Le poisson doit attraper le ver en moins de 90 secondes. Par ailleurs, tous les deux doivent respirer régulièrement en rejoignant les zones à bulles avant d'avoir épuisé leur air (jauge de la bouteille d'O<sub>2</sub>).</p>
+    <p>Evidemment, chaque joueur est tour à tour le poisson et le ver.</p>
+    <p>Chacun peut édifier un mur de bouées et de ballons s'il en a la capacité, cette dernière s'acquérant en passant sur une bouée clignotante. De même, chacun peut détruire les murs en place s'il est passé récemment sur un pétard.</p>
+    <p>La construction d'un mur est faite derrière l'animal ; la destruction se fait devant.</p>
+    <h3>Touches</h3>
+    <p><b>Joueur de gauche :</b> <kbd>Z</kbd> <kbd>Q</kbd> <kbd>S</kbd> <kbd>D</kbd> (<kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> en QWERTY), mur <kbd>1</kbd>, démolition <kbd>2</kbd>.</p>
+    <p><b>Joueur de droite :</b> les flèches, mur <kbd>Espace</kbd>, démolition <kbd>Entrée</kbd> (ou <kbd>Alt Gr</kbd>, <kbd>Ctrl</kbd> droit).</p>
+    <p><b>Pause :</b> <kbd>P</kbd> ou <kbd>Échap</kbd>. Le jeu se met aussi en pause quand l'onglet est caché.</p>
+    <p><b>Sur écran tactile :</b> la croix et les boutons Mur et Pétard sous la piscine, ou gardez le doigt appuyé dans la piscine vers où nager.</p>
+    <p>Contre l'ordinateur, vous êtes le joueur de droite : le ver dans la première manche, le poisson dans la seconde.</p>
+    <h3>Niveaux de l'ordinateur</h3>
+    <p><b>Débutant</b> : se trompe souvent et vise mal. <b>Confirmé</b> : le niveau de la version d'origine. <b>Expert</b> : le ver prévoit trois coups à l'avance et respire dès que c'est sans danger ; le poisson garde la zone à bulles dont le ver aura besoin et construit des murs pour l'enfermer.</p>
+    <h3>Précisions</h3>
+    <p>L'air dure 30 secondes et se recharge dans les 4 zones à bulles ; une bouée clignotante donne un mur (3 au maximum en réserve) ; un pétard permet une démolition dans les 15 secondes ; un mur fait 3 cases de large, une démolition dégage 3 cases sur 2 ; le poisson et le ver nagent à la même vitesse. Les temps de manche sont mesurés au dixième de seconde.</p>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">J'ai compris</button></div></dialog>
+
+<dialog id="settings"><div class="d-head"><h2>Réglages</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <div class="field"><span class="label" id="lblMode">Mode</span>
+      <div class="seg" role="group" aria-labelledby="lblMode" id="segMode">
+        <button data-v="1">Contre l'ordinateur</button><button data-v="2">Deux joueurs</button>
+      </div></div>
+    <div class="field"><span class="label" id="lblLevel">Niveau de l'ordinateur</span>
+      <div class="seg" role="group" aria-labelledby="lblLevel" id="segLevel">
+        <button data-v="0">Débutant</button><button data-v="1">Confirmé</button><button data-v="2">Expert</button>
+      </div></div>
+    <label class="switch"><span>Musique</span><input type="checkbox" id="optMusic"></label>
+    <label class="switch"><span>Compte à rebours avant chaque manche</span><input type="checkbox" id="optCountdown"></label>
+    <div class="field" style="margin-top:8px"><label for="optSeed">Graine (partie rejouable : mêmes bonus, mêmes choix de l'ordinateur ; vide = au hasard)</label>
+      <div class="seed"><input type="text" id="optSeed" inputmode="numeric" maxlength="10" placeholder="au hasard" autocomplete="off"><button class="btn" id="seedLast" type="button">Dernière</button></div></div>
+    <p class="sub">Les réglages s'appliquent à la prochaine partie.</p>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="../../common/lehcim.js"></script>
+<script src="engine.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
