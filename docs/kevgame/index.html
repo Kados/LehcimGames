@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KevGame - LehcimGames</title>
+<link rel="stylesheet" href="../common/style.css">
+<style>
+  .touchbar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 8px 0 0; }
+  .touchbar button { min-width: 110px; padding: 6px 12px; }
+  @media (hover: hover) and (pointer: fine) { .touchbar { display: none; } }
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>KevGame</span></div>
+  <div class="toolbar">
+    <button id="new">Nouvelle partie</button>
+    <button id="abandon">Abandonner</button>
+    <label>Mode
+      <select id="mode">
+        <option value="1">Un joueur contre l'ordinateur</option>
+        <option value="2">Deux joueurs</option>
+      </select>
+    </label>
+    <label>Niveau
+      <select id="level" title="Niveau ( en mode &quot;Un Joueur&quot; )">
+        <option value="0">Niveau débutant</option>
+        <option value="1">Niveau confirmé</option>
+      </select>
+    </label>
+    <button data-help>Règles</button>
+    <button data-mute></button>
+    <button data-about>A propos</button>
+    <span class="status" id="status"></span>
+  </div>
+  <div class="stage"><canvas class="game" id="game" width="600" height="408"></canvas></div>
+  <div class="touchbar">
+    <button id="tWall">Mur</button>
+    <button id="tBoom">Démolition</button>
+  </div>
+  <p class="hint">Gauche : <kbd>Z</kbd> <kbd>Q</kbd> <kbd>S</kbd> <kbd>D</kbd> (<kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> en QWERTY), mur <kbd>1</kbd>, démolition <kbd>2</kbd>.
+    Droite : flèches, mur <kbd>Espace</kbd>, démolition <kbd>Alt Gr</kbd> (ou <kbd>Entrée</kbd> / <kbd>Ctrl</kbd> droit).
+    En mode un joueur, vous êtes le joueur de droite (les deux jeux de touches marchent) ; sur écran tactile, gardez le doigt appuyé vers où nager.</p>
+</div>
+
+<dialog id="help"><h2>Règles du jeu</h2><div class="body">
+  <p>Le jeu se joue en 2 manches. Si chaque joueur en gagne une, le vainqueur est celui qui aura remporté la sienne le plus rapidement.</p>
+  <p>Le poisson doit attraper le ver en moins de 90 secondes. Par ailleurs, tous les deux doivent respirer régulièrement en rejoignant les zones à bulles avant d'avoir épuisé leur air (jauge de la bouteille d'O<sub>2</sub>).</p>
+  <p>Evidemment, chaque joueur est tour à tour le poisson et le ver.</p>
+  <p>Chacun peut édifier un mur de bouées et de ballons s'il en a la capacité, cette dernière s'acquérant en passant sur une bouée clignotante. De même, chacun peut détruire les murs en place s'il est passé récemment sur un pétard.</p>
+  <p>La construction d'un mur est faite derrière l'animal ; la destruction se fait devant.</p>
+  <h3>Touches</h3>
+  <p><b>Joueur de gauche :</b> haut : <kbd>Z</kbd>, droite : <kbd>D</kbd>, bas : <kbd>S</kbd>, gauche : <kbd>Q</kbd>, mur : <kbd>1</kbd>, démolition : <kbd>2</kbd>.
+    (Sur un clavier QWERTY, ce sont les touches <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> situées au même endroit.)</p>
+  <p><b>Joueur de droite :</b> haut : flèche "Haut", droite : flèche "Droite", bas : flèche "Bas", gauche : flèche "Gauche", mur : touche "Espace", démolition : touche "Alt Gr" (ou "Entrée", ou "Ctrl" droit).</p>
+  <p>Remarque : en mode "un joueur", le joueur de gauche est simulé par l'ordinateur.</p>
+  <h3>Sur les côtés du bassin</h3>
+  <p>La bouée de chaque joueur est suivie des murs qu'il peut encore construire (3 au plus), le pétard s'allume tant que la démolition est possible, et la bouteille d'O<sub>2</sub> montre l'air qui lui reste.</p>
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<dialog id="about"><h2>A propos de...</h2><div class="body">
+  <p><b>KevGame</b><br>Concepteur : Lehcim Noil et Nivek</p>
+  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation.</p>
+  <p>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes, ses sons et sa musique d'origine.</p>
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<script src="../common/lehcim.js"></script>
+<script src="engine.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
