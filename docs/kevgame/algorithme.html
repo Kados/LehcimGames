@@ -11,105 +11,101 @@
   <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>KevGame : l'algorithme</span></div>
   <div class="article">
     <h1>KevGame : comment fonctionne l'algorithme</h1>
-    <p class="lead">KevGame est un jeu d'action sur une grille : le poisson poursuit le ver dans une piscine de 21 x 13 cases, chacun doit aller respirer dans des zones à bulles, et on peut poser ou faire sauter des murs. Le moteur (<code>engine.js</code>) fait avancer une simulation case par case, et l'ordinateur décide de sa direction à chaque case à l'aide de cartes de distances calculées par un parcours en largeur (BFS).</p>
+    <p class="lead">KevGame est un jeu d'action sur une grille : le poisson poursuit le ver dans une piscine de 21 x 13 cases, chacun doit aller respirer dans des zones à bulles qui se déplacent, et on peut poser ou faire sauter des murs. Les règles ci-dessous ont été mesurées image par image sur le jeu d'origine (KevGame.exe, version 2.2, lancé sous Wine). Le moteur (<code>engine.js</code>) les rejoue par ticks de 50 ms, et l'ordinateur décide de sa direction à chaque case à l'aide de cartes de distances calculées par un parcours en largeur (BFS).</p>
 
     <h2>Ce que fait l'algorithme</h2>
 
-    <h3>La simulation : une grille et un pas de temps</h3>
-    <p>La piscine est un tableau de <code>COLS = 21</code> par <code>ROWS = 13</code> cases de 24 pixels, soit 273 cases. Chaque case peut contenir un morceau de mur (<code>st.walls</code>) ; quatre cases fixes sont des zones à bulles (<code>ZONES</code> : (3,2), (17,2), (3,10), (17,10)).</p>
-    <p>À chaque image, <code>game.js</code> appelle <code>step(st, dt, wants)</code> avec un <code>dt</code> plafonné à 0,05 s. Un animal va toujours d'une case à la case voisine : <code>moveAnimal</code> fait progresser <code>prog</code> de 0 à 1 en <code>CFG.fishCell = CFG.wormCell = 0.28</code> s (environ 3,6 cases par seconde, la même vitesse pour les deux). La direction voulue n'est demandée qu'au moment où l'animal arrive sur une case : c'est pour cela que <code>wants</code> contient des fonctions, appelées seulement quand <code>moving</code> est faux. Si la case visée est un mur ou hors du bassin (<code>solid</code>), l'animal se tourne mais reste sur place.</p>
+    <h3>La simulation : une grille et des ticks de 50 ms</h3>
+    <p>La piscine est un tableau de <code>COLS = 21</code> par <code>ROWS = 13</code> cases de 24 pixels, soit 273 cases. Chaque case peut contenir une bouée ou un ballon (<code>st.walls</code>). Comme l'original, qui avance sur une minuterie de 50 ms (<code>Timer1</code>), le jeu ne connaît que des ticks : <code>game.js</code> accumule le temps écoulé et appelle <code>step(st, wants)</code> une fois par tranche de 50 ms.</p>
+    <p>À chaque manche, <code>newRound</code> place le ver du joueur de gauche en (1,1) et le poisson du joueur de droite en (19,1), tous deux tournés vers le haut (les rôles s'inversent à la manche 2), puis pose 5 à 11 bouées et ballons au hasard dans les colonnes 2 à 18, lignes 1 à 11.</p>
+    <p>Un animal va toujours d'une case à la case voisine, à 4 pixels par tick (<code>CFG.speed</code>) : une case en 6 ticks, soit 0,3 s, pour le poisson comme pour le ver. La direction n'est lue que lorsque l'animal est arrêté sur une case : c'est pour cela que <code>wants</code> contient des fonctions, appelées seulement quand <code>moving</code> est faux. Sans touche tenue, l'animal reste sur place ; si la case visée est un mur ou hors du bassin (<code>solid</code>), il se tourne mais ne bouge pas.</p>
     <p>Après les déplacements, <code>step</code> gère dans l'ordre :</p>
     <ul>
-      <li><b>l'air</b> : dans une zone à bulles, <code>air</code> remonte de <code>breathRate = 0.7</code> par seconde (un plein en moins d'1,5 s) ; ailleurs, il baisse de <code>dt / airTime</code>, avec <code>airTime = 30</code> s ;</li>
-      <li><b>les bonus</b> : une bouée clignotante (un mur de plus, 3 au maximum, <code>maxWalls</code>) et un pétard (une démolition possible pendant <code>chargeTime = 15</code> s). Ils réapparaissent après 5 à 9 s (<code>buoyDelay</code>) et 7 à 12 s (<code>petardDelay</code>), sur une case tirée au hasard par <code>freeCell</code> : 200 essais au plus, case libre, hors zone, à au moins 3 cases (distance de Manhattan) des deux animaux ;</li>
-      <li><b>la fin de manche</b> : le poisson attrape le ver si la distance de Manhattan entre leurs positions en pixels est inférieure à <code>catchDist = 14</code> px ; un animal sans air perd (les deux à la fois : ex aequo) ; à <code>roundTime = 90</code> s, le ver gagne. Le temps est arrondi au dixième, ce qui sert à départager les joueurs dans <code>matchResult</code>.</li>
+      <li><b>les bonus ramassés</b> : la bouée clignotante remet la réserve de murs au maximum (4 pour le ver, 7 pour le poisson), le pétard remet les démolitions à 3 ;</li>
+      <li><b>les pétards allumés</b> : un mur qui porte un pétard depuis 20 ticks (1 s, <code>fuseTicks</code>) disparaît ;</li>
+      <li><b>les zones à bulles</b> : il y en a 2, parties de (0,6) et (20,6) ; tous les 36 ticks (1,8 s, <code>zoneTicks</code>), chacune saute sur une case voisine tirée au hasard, murs compris ;</li>
+      <li><b>les bonus</b> : tous les 300 ticks (15 s), une bouée clignotante (à 0, 30 et 60 s) ou un pétard (à 15, 45 et 75 s) apparaît sur une case libre au hasard ; il disparaît au bout de 150 ticks (7,5 s) s'il n'est pas ramassé ;</li>
+      <li><b>l'air</b> : il vaut 60 et perd une unité tous les 10 ticks (30 s d'autonomie) ; dès que la case d'un animal est celle d'une zone, il revient d'un coup à 60 ;</li>
+      <li><b>la fin de manche</b> : le poisson attrape le ver si la distance de Manhattan entre leurs positions en pixels est inférieure à 16 (<code>catchDist</code>) ; un animal sans air perd (les deux à la fois : personne ne gagne) ; au tick 1 800 (90 s), le poisson explose et le ver gagne. Le temps retenu est en secondes entières, comme dans les messages de l'original (« droite a gagné en 6 secondes . »).</li>
     </ul>
-    <p>Les murs suivent les règles d'origine : <code>buildWall</code> pose 3 pièces en travers de la case située derrière l'animal (jamais sur une zone, un bonus ou un animal) ; <code>demolish</code> vide un rectangle de 3 cases de large sur 2 de profondeur devant lui.</p>
+    <p>Les murs et les démolitions suivent les mesures : <code>buildWall</code> pose une seule bouée dans la case que l'animal quitte (ou derrière lui s'il est arrêté) et baisse sa réserve d'une unité ; <code>demolish</code> allume un pétard sur le mur de la case juste devant lui et baisse son compteur, mais ne fait rien (et ne décompte rien) s'il n'y a pas de mur. <code>matchResult</code> applique la règle des deux manches : un gagnant par manche, c'est le plus rapide qui l'emporte ; à temps égal, partie nulle.</p>
 
     <h3>Le joueur ordinateur : des cartes de distances</h3>
-    <p>L'outil de base est <code>bfs(st, x, y, ignoreWalls)</code> : un parcours en largeur qui remplit un <code>Int16Array</code> de 273 distances (-1 = inaccessible). La fonction <code>downhill</code> choisit ensuite, parmi les 4 voisins, celui dont la distance est la plus petite : suivre la pente mène par le plus court chemin à l'origine de la carte. Avec <code>ignoreWalls</code>, les murs ne coûtent rien, ce qui sert à préparer une démolition (<code>goThrough</code>).</p>
+    <p>Le code de l'original (16 bits) n'est pas lisible ; le portage reproduit ce que l'on voit jouer. L'outil de base est <code>bfs(st, x, y, ignoreWalls)</code> : un parcours en largeur qui remplit un tableau de 273 distances (-1 = inaccessible). La fonction <code>downhill</code> choisit ensuite, parmi les 4 voisins, celui dont la distance est la plus petite : suivre la pente mène par le plus court chemin à l'origine de la carte. À égalité, elle essaie d'abord l'axe le plus long du trajet vers la cible : sans cela, le poisson imitait le zigzag du ver sans jamais se rapprocher. Avec <code>ignoreWalls</code>, les murs ne coûtent rien, ce qui sert à préparer une démolition (<code>goThrough</code>). Le niveau débutant n'utilise pas de carte pour viser : <code>greedy</code> fait un pas dans la direction de la cible, sur l'axe le plus long.</p>
     <p>La fonction renvoyée par <code>aiThink</code> applique des priorités, de la plus urgente à la moins urgente :</p>
-<pre><code>myD = bfs(depuis moi)
-1. respirer : zone la plus proche (le ver pénalise de +12 une zone
-   que le poisson atteint avant lui, tant que air &gt; 0.25)
-   besoin = (distance * 0.28 + 2) / 30 * (1.25 confirmé | 1.6 débutant)
-   si air &lt; besoin : descendre vers la zone
-   dans la zone : rester jusqu'à 0.95 (confirmé) ou 0.85 (débutant)
-2. débutant : 18 % de coups au hasard
-3. bonus proche : poisson si à 3 cases ou moins ; ver si à 6 cases
-   ou moins et le poisson à plus de distance + 3
-4. poisson : chasser ; ver : fuir</code></pre>
-    <p><b>La chasse</b> : le poisson calcule un BFS depuis le ver et descend la pente. Le niveau confirmé vise la case où le ver se rend (<code>nx, ny</code>), le débutant celle qu'il quitte. Si le chemin réel est bloqué, ou s'il est plus long de 6 cases que le chemin à travers les murs, et qu'il a un pétard, il passe par <code>goThrough</code> et fait sauter le mur devant lui. Sans pétard et bloqué, il va en chercher un.</p>
-    <p><b>La fuite</b> (<code>flee</code>) : le ver note chaque voisin, et l'option rester sur place. Le score vaut 4 fois la distance BFS du poisson à cette case, moins 500 si le poisson y est à 1 case ou moins, moins 3 pour l'immobilité, plus un peu de bruit (3 en débutant, 0,5 en confirmé). Le niveau confirmé ajoute une mesure de territoire, proche d'un diagramme de Voronoï : il fait un BFS depuis la case candidate et compte les cases qu'il atteindrait avant le poisson (<code>md * ratio + 1 &lt; fd</code>). Le ver préfère ainsi les grands espaces aux culs-de-sac. Enfin, il pose un mur derrière lui si le poisson le suit à 2 à 4 cases, et fait sauter le mur qui se trouve devant lui (s'il a un pétard) quand le poisson est à 3 cases ou moins.</p>
+<pre><code>myD = bfs(depuis moi), zone = la zone à bulles la plus proche
+1. respirer :
+   confirmé  : si air &lt;= distance * 0,6 + 14, descendre vers la zone
+   débutant  : ver à 42 d'air ou moins, poisson à 12 ou moins,
+               en visant à vol d'oiseau
+   toutes les zones murées et air &lt; 30 : passer à travers (zone 0)
+2. bonus utile et proche : poisson à 3 cases ou moins ; ver à 6 cases
+   ou moins si le poisson en est plus loin de 2 cases
+3. poisson : chasser ; ver : fuir</code></pre>
+    <p><b>La chasse</b> : le poisson confirmé calcule un BFS depuis la case où va le ver et descend la pente. Si le chemin réel est bloqué, ou plus long de 6 cases que le chemin à travers les murs, et qu'il lui reste une démolition, il passe par <code>goThrough</code> et allume un pétard sur le mur devant lui. Le poisson débutant vise à vol d'oiseau et joue au hasard 30 % du temps, 60 % à 3 cases du ver : il hésite près de sa proie, comme celui de l'original.</p>
+    <p><b>La fuite</b> (<code>flee</code>) : le ver débutant tourne en petite boucle (droite, bas, gauche, haut) tant que le poisson est à plus de 7 cases. Sinon, le ver note chaque voisin, et l'option rester sur place : 4 fois la distance BFS du poisson à cette case, moins 500 si le poisson y est à 1 case ou moins, moins 3 pour l'immobilité, plus un peu de bruit (3 en débutant, 0,5 en confirmé). Le niveau confirmé ajoute une mesure de territoire, proche d'un diagramme de Voronoï : il fait un BFS depuis la case candidate et compte les cases qu'il atteindrait avant le poisson (<code>md + 1 &lt; fd</code>, les deux nagent à la même vitesse). Le ver préfère ainsi les grands espaces aux culs-de-sac. Il pose une bouée derrière lui si le poisson le suit à 2 à 4 cases (toujours en confirmé, 3 fois sur 10 en débutant), et allume un pétard sur le mur devant lui quand le poisson est à 3 cases ou moins.</p>
 
     <table>
       <tr><th>En chiffres</th><th>Débutant</th><th>Confirmé</th></tr>
-      <tr><td>Coups au hasard</td><td>18 %</td><td>0 %</td></tr>
-      <tr><td>Marge de sécurité pour l'air</td><td>x 1,6</td><td>x 1,25</td></tr>
-      <tr><td>Quitte la zone à bulles à</td><td>85 % d'air</td><td>95 % d'air</td></tr>
-      <tr><td>Cible du poisson</td><td>case quittée par le ver</td><td>case visée par le ver</td></tr>
-      <tr><td>Fuite du ver</td><td>distance seule, bruit 3</td><td>distance + territoire, bruit 0,5</td></tr>
-      <tr><td>BFS par décision (ver)</td><td>2 en général</td><td>7 en général</td></tr>
+      <tr><td>Va respirer</td><td>ver à 42 d'air, poisson à 12</td><td>air &lt;= 0,6 x distance + 14</td></tr>
+      <tr><td>Chemin</td><td>à vol d'oiseau</td><td>BFS (plus court chemin)</td></tr>
+      <tr><td>Poisson : coups au hasard</td><td>30 %, 60 % près du ver</td><td>0 %</td></tr>
+      <tr><td>Ver loin du poisson</td><td>petite boucle sur place</td><td>fuite avec territoire</td></tr>
+      <tr><td>Ver : bouée derrière lui</td><td>3 fois sur 10</td><td>toujours</td></tr>
+      <tr><td>BFS par décision (ver)</td><td>2</td><td>7 en général</td></tr>
     </table>
 
     <h2>Pourquoi ce choix</h2>
-    <p>Le terrain est petit (273 cases) et les murs changent sans arrêt : recalculer un BFS à chaque décision coûte quelques microsecondes et donne toujours des chemins exacts, sans structure à tenir à jour. Comme une décision n'est prise qu'une fois par case, soit environ 3,6 fois par seconde, même les 7 BFS du ver confirmé ne pèsent rien sur le fil principal du navigateur.</p>
-    <p>Un A* n'apporterait rien ici : une carte de distances sert à la fois à trouver le chemin, à comparer les zones à bulles et à mesurer le territoire. Les priorités fixes (air, bonus, chasse) sont simples à lire et à régler, et reproduisent le comportement d'un joueur humain de l'époque plutôt qu'un adversaire parfait. Les deux niveaux jouent sur des leviers lisibles : hasard, prudence, anticipation.</p>
-    <p>Le compromis : l'ordinateur ne prévoit pas les coups de l'adversaire. À vitesse égale, le poisson qui se contente de suivre la pente ne rattrape le ver que lorsque celui-ci se coince ou va respirer ; c'est le manque d'air, plus que la chasse, qui crée les occasions.</p>
+    <p>Le terrain est petit (273 cases) et les murs changent sans arrêt : recalculer un BFS à chaque décision coûte quelques microsecondes et donne toujours des chemins exacts, sans structure à tenir à jour. Comme une décision n'est prise qu'une fois par case, soit au plus 3,3 fois par seconde, même les 7 BFS du ver confirmé ne pèsent rien sur le fil principal du navigateur. Les zones à bulles bougeant toutes les 1,8 s, la cible est simplement recalculée à chaque case.</p>
+    <p>Un A* n'apporterait rien ici : une carte de distances sert à la fois à trouver le chemin, à comparer les zones à bulles et à mesurer le territoire. Les priorités fixes (air, bonus, chasse) sont simples à lire et à régler, et imitent ce que font les deux niveaux de l'original plutôt qu'un adversaire parfait.</p>
+    <p>Le compromis : l'ordinateur ne prévoit pas les coups de l'adversaire. À vitesse égale, un poisson qui suit le ver ne le rattrape jamais en ligne droite ; il l'attrape quand le ver se coince, tourne en rond ou va respirer.</p>
 
     <h2>Comment l'améliorer</h2>
     <ol>
-      <li><b>Un poisson qui coupe le territoire.</b> Aujourd'hui le poisson ne construit jamais de mur et poursuit le ver en ligne droite. Il pourrait réutiliser le calcul de territoire de <code>flee</code> : choisir la case qui <em>réduit</em> le plus l'espace du ver, poser un mur quand cela coupe le bassin en deux, ou guetter la zone à bulles que le ver devra rejoindre quand son air baisse (son air est visible dans l'état). Effort : moyen, dans la branche <code>me.kind === 'fish'</code> de <code>aiThink</code>.</li>
-      <li><b>Corriger les cas limites de la respiration.</b> Quand toutes les zones sont murées, <code>goThrough</code> vise toujours <code>ZONES[0]</code> au lieu de la zone la plus proche à travers les murs, et sans pétard il renvoie -2, donc l'animal continue sa route et finit par étouffer. Il faudrait prendre la zone de plus petite distance dans <code>bfs(..., true)</code> et, sans charge, aller chercher le pétard. Effort : faible, dans le bloc « zones walled off » de <code>aiThink</code>.</li>
-      <li><b>Graine déterministe et pas fixe.</b> <code>newRound</code> reçoit déjà son générateur <code>rng</code>, mais <code>game.js</code> lui passe <code>Math.random</code>, et <code>dt</code> dépend du rythme d'affichage. Un petit générateur à graine (mulberry32 par exemple) et un accumulateur à pas fixe (0,02 s) dans <code>update</code> rendraient les parties rejouables à l'identique : utile pour des tests automatiques IA contre IA et pour régler les niveaux. Effort : faible.</li>
-      <li><b>Une table de niveaux et un troisième niveau.</b> Les réglages sont dispersés (0,18, 1,6/1,25, 0,85/0,95, bruit 3/0,5, territoire oui/non). Les rassembler dans un objet par niveau, dans <code>newBrain</code>, permettrait d'ajouter un niveau « expert » (poisson du point 1, ver qui anticipe d'une case la réponse du poisson) et de régler la difficulté en faisant jouer l'ordinateur contre lui-même. Effort : faible à moyen.</li>
-      <li><b>Moins de prévisibilité.</b> <code>downhill</code> garde le premier voisin à égalité, dans l'ordre haut, droite, bas, gauche : à distance égale, le poisson préfère toujours monter. Tirer au hasard parmi les ex aequo, ou préférer garder sa direction, donnerait des trajectoires plus naturelles. Effort : très faible.</li>
-      <li><b>Recherche à faible profondeur pour le ver confirmé.</b> Une recherche minimax de 2 ou 3 cases (ver, puis poisson, puis ver), avec le territoire comme évaluation, éviterait les pièges que la note d'une seule case ne voit pas. Avec 5 coups par animal, cela reste quelques centaines de BFS par décision, encore supportable. Effort : moyen, dans <code>flee</code>.</li>
+      <li><b>Les cas limites de la respiration.</b> Quand aucune zone n'est accessible, <code>goThrough</code> vise toujours <code>zones[0]</code> au lieu de la zone la plus proche à travers les murs ; sans démolition, rien ne se passe et l'animal étouffe. De plus, une zone posée sur un mur (elles vont partout) est vue comme inaccessible, alors qu'il suffit d'attendre à côté. Effort : faible, dans le bloc « respirer » de <code>aiThink</code>.</li>
+      <li><b>Attendre l'explosion.</b> Après avoir allumé un pétard, <code>goThrough</code> renvoie -1 et <code>aiThink</code> passe à la priorité suivante : l'animal peut repartir ailleurs au lieu d'attendre une seconde devant le mur. Effort : très faible.</li>
+      <li><b>Graine déterministe.</b> <code>newRound</code> reçoit déjà son générateur <code>rng</code>, mais <code>game.js</code> lui passe <code>Math.random</code>. Un petit générateur à graine (mulberry32 par exemple) rendrait les parties rejouables à l'identique, puisque le jeu avance déjà par ticks fixes : utile pour des tests automatiques ordinateur contre ordinateur. Effort : faible.</li>
+      <li><b>Une table de niveaux et un troisième niveau.</b> Les réglages sont dispersés dans le code (42, 12, 14, 30 % / 60 %, bruit 3 / 0,5, territoire oui / non). Les rassembler dans un objet par niveau permettrait d'ajouter un niveau « expert » et de régler la difficulté en faisant jouer l'ordinateur contre lui-même. Effort : faible à moyen.</li>
+      <li><b>Un ver qui anticipe.</b> Une recherche de 2 ou 3 coups (ver, puis poisson, puis ver), avec le territoire comme évaluation, éviterait les pièges que la note d'une seule case ne voit pas. Le ver pourrait aussi refaire le plein dès qu'une zone est sûre, au lieu d'attendre d'y être obligé. Effort : moyen, dans <code>flee</code>.</li>
+      <li><b>Un poisson qui coupe le territoire.</b> Le poisson ne pose jamais de mur alors qu'il en a 7. Il pourrait guetter la zone à bulles que le ver devra rejoindre et poser un mur quand cela retire beaucoup de cases à l'espace du ver. Effort : moyen.</li>
     </ol>
 
     <h2>Dans la nouvelle version</h2>
-    <p>La <a href="nouveau/">nouvelle version</a> garde les règles, les graphismes, les sons et la musique d'origine. Son moteur (<code>nouveau/engine.js</code>) reprend celui-ci et applique cinq des six pistes ci-dessus. Les chiffres viennent de manches jouées par l'ordinateur contre lui-même dans node, avec le pas fixe de 0,02 s et les mêmes graines pour chaque série (200 manches par ligne).</p>
+    <p>La <a href="nouveau/">nouvelle version</a> joue avec exactement les mêmes règles (mêmes ticks de 50 ms, mêmes départs, mêmes bonus, mêmes compteurs), les graphismes, les sons et la musique d'origine, et montre en fin de manche les mêmes animations et les mêmes messages. Son moteur (<code>nouveau/engine.js</code>) applique les six pistes ci-dessus. Les chiffres viennent de manches jouées par l'ordinateur contre lui-même dans node, sur le moteur à ticks de 50 ms, avec les mêmes graines pour chaque ligne (200 manches, dispositions de la manche 1 et de la manche 2 en alternance).</p>
 
-    <h3>Les cas limites de la respiration (piste 2)</h3>
-    <p>Quand toutes les zones sont murées, l'animal vise maintenant la zone la plus proche <em>à travers les murs</em> (BFS avec <code>ignoreWalls</code> depuis lui), et non plus <code>ZONES[0]</code>. Sans pétard, il va chercher celui qui est dans son enclos ; s'il n'y en a pas, il attend contre le mur le plus proche de la zone. Deux situations construites à la main le montrent :</p>
-    <table>
-      <tr><th>Situation</th><th>Version d'origine</th><th>Nouvelle version</th></tr>
-      <tr><td>Ver enfermé près de la zone (17,10), murs épais de 3 cases en haut et à gauche, fins à droite et en bas ; un pétard, 20 % d'air</td><td>part vers le haut (ZONES[0]), ne perce pas le mur épais, meurt étouffé</td><td>part vers le bas, perce le mur fin, respire au bout de 3,2 s</td></tr>
-      <tr><td>Bassin coupé en deux, zones de droite murées, pas de pétard en main, un pétard à 8 cases ; 55 % d'air</td><td>ne va pas le chercher, meurt étouffé</td><td>ramasse le pétard, perce le mur, respire au bout de 13,9 s</td></tr>
-    </table>
+    <h3>Les cas limites (pistes 1 et 2)</h3>
+    <p>Quand toutes les zones sont murées, l'animal vise la zone la plus proche <em>à travers les murs</em> (BFS avec <code>ignoreWalls</code> depuis lui). Sans démolition, il va chercher le pétard s'il y en a un dans son enclos, sinon il attend contre le mur le plus proche de la zone. Une zone posée sur un mur est remplacée par sa case voisine libre la plus proche (<code>zoneTargets</code>), où l'animal attend qu'elle saute. Après avoir allumé un pétard, il reste devant le mur jusqu'à l'explosion.</p>
 
-    <h3>Les égalités tirées au hasard (piste 5)</h3>
-    <p><code>downhill</code> tire maintenant au hasard parmi les voisins à égalité. Poisson en (5,3), ver en (10,8), 400 essais : la version d'origine choisit 400 fois « droite » ; la nouvelle 188 fois « droite » et 212 fois « bas ».</p>
+    <h3>Graine (piste 3)</h3>
+    <p>Un générateur mulberry32 remplace <code>Math.random</code>. Comme le jeu avance par ticks fixes, une manche ordinateur contre ordinateur avec la même graine se rejoue à l'identique (même disposition, mêmes bonus, mêmes zones, même résultat). La graine de chaque partie est affichée et peut être imposée dans les réglages.</p>
 
-    <h3>Graine et pas fixe (piste 3)</h3>
-    <p>Un générateur mulberry32 remplace <code>Math.random</code>, et la page fait avancer la simulation par pas fixes de 0,02 s (accumulateur). Une manche ordinateur contre ordinateur avec la même graine se rejoue à l'identique (même résultat, même trajectoire). La graine de chaque partie est affichée et peut être imposée dans les réglages.</p>
-
-    <h3>Une table de niveaux et un niveau « expert » (pistes 1, 4 et 6)</h3>
-    <p>Tous les réglages sont rassemblés dans <code>LEVELS</code> : débutant et confirmé gardent leurs valeurs d'origine (avec les corrections ci-dessus), et un troisième niveau, <b>expert</b>, ajoute :</p>
+    <h3>Une table de niveaux et un niveau « expert » (pistes 4, 5 et 6)</h3>
+    <p>Tous les réglages sont rassemblés dans <code>LEVELS</code> : débutant et confirmé gardent les valeurs du portage d'origine. Le troisième niveau, <b>expert</b>, joue avec les mêmes règles et ajoute :</p>
     <ul>
-      <li><b>un ver qui cherche à 3 coups</b> : le ver joue, le poisson répond par le pire coup pour lui, le ver joue encore ; la note d'une position additionne le territoire (les cases que le ver atteint avant le poisson), 4 fois la distance au poisson et un bonus pour chaque zone à bulles qu'il atteint le premier. Les cartes de distances sont mises en cache par case : une vingtaine de BFS par décision.</li>
-      <li><b>un ver qui respire quand c'est sans danger</b> : c'était la vraie faiblesse. Dans la version d'origine, presque toutes les prises arrivent quand le ver, à court d'air, file vers une zone avec le poisson sur les talons. Le ver expert fait le plein dès qu'une zone lui donne assez d'avance sur le poisson (distances BFS réelles, pas à vol d'oiseau), et sinon choisit la zone où son avance est la plus grande.</li>
-      <li><b>un poisson qui garde les zones</b> : il prévoit la zone où le ver a le plus d'avance et va s'y placer s'il peut y être au plus 2 cases après lui ; le ver ne trouve alors plus de zone sûre. Il reprend la chasse simple à 2 cases du ver, ou quand l'écart s'est réduit de 3 cases sur ses 12 dernières décisions (un ver maladroit se fait simplement poursuivre).</li>
-      <li><b>un poisson qui pose des murs</b> : avant chaque case, il essaie le mur qu'il poserait derrière lui ; il le construit si cela retire au moins 12 cases à l'espace du ver (ou rallonge son chemin vers l'air quand l'air du ver baisse), sans jamais s'enfermer lui-même. Il en pose de 0,05 à 0,2 par manche, contre jamais auparavant.</li>
-      <li><b>un poisson qui respire au bon moment</b> : il fait le plein quand le ver est loin ou en train de respirer, au lieu d'attendre d'y être obligé au milieu d'une poursuite, et quitte une zone dès que le ver passe à 3 cases.</li>
+      <li><b>un ver qui cherche à 3 coups</b> : le ver joue, le poisson répond par le pire coup pour lui, le ver joue encore ; la note d'une position additionne le territoire, 4 fois la distance au poisson et un bonus pour chaque zone à bulles qu'il atteint le premier. Les cartes de distances sont mises en cache par case : une vingtaine de BFS par décision.</li>
+      <li><b>un ver qui respire quand c'est sans danger</b> : la recharge étant instantanée, il suffit de toucher une zone. Le ver expert le fait dès que son air passe sous 45 et qu'une zone lui donne assez d'avance sur le poisson (distances BFS réelles) ; à court d'air, il choisit la zone où son avance est la plus grande. Il respire environ 4 fois par manche, contre 2 pour le ver confirmé.</li>
+      <li><b>un poisson qui respire au dernier moment</b> : il va respirer à 0,6 x distance + 6 d'air au lieu de + 14, ce qui lui fait moins de pauses pendant la chasse, et fait le plein quand le ver est loin ou en train de respirer.</li>
+      <li><b>un poisson qui garde les zones et pose des murs</b> : quand l'air du ver baisse, il va vers la zone où le ver a le plus d'avance s'il peut y être au plus 2 cases après lui (un cercle rouge la montre au joueur) ; il pose une bouée derrière lui quand cela retire au moins 12 cases à l'espace du ver, sans jamais s'enfermer lui-même.</li>
+      <li><b>une règle d'égalité en diagonale</b> : quand le trajet est parfaitement en diagonale, le poisson expert prend l'axe horizontal (le bassin est plus large que haut). Ce détail compte : contre le ver expert, il fait passer son taux de prise de 55 % (égalités tirées au hasard) à 66 %. Un tirage au hasard parmi les ex aequo, essayé aussi, faisait tomber le poisson confirmé de 49 % à 21 % contre ce même ver.</li>
     </ul>
-    <p>Essais abandonnés : un poisson qui choisit la case réduisant le plus le territoire du ver (une sorte de Voronoï inversé), et un poisson qui fait la même recherche à 3 coups que le ver. Les deux attrapent moins souvent le ver expert que la simple chasse (22 et 15 manches sur 60, contre 27, mesurés sur une version intermédiaire du ver expert).</p>
+    <p>Essais abandonnés : garder une zone en permanence ou poser des murs dès 4 cases de gain ne change presque rien, car les zones bougent et la recharge est instantanée. Le gros du gain du poisson expert vient de la respiration tardive.</p>
 
     <table>
       <tr><th>Poisson contre ver (200 manches)</th><th>Le poisson gagne</th><th>Prise en moyenne</th></tr>
-      <tr><td>Confirmé d'origine contre confirmé d'origine</td><td>187 (93,5 %)</td><td>33,3 s</td></tr>
-      <tr><td>Débutant d'origine contre débutant d'origine</td><td>195 (97,5 %)</td><td>34,7 s</td></tr>
-      <tr><td>Nouveau confirmé contre nouveau confirmé</td><td>187 (93,5 %)</td><td>39,3 s</td></tr>
-      <tr><td>Expert contre confirmé d'origine</td><td>197 (98,5 %)</td><td>30,1 s</td></tr>
-      <tr><td>Expert contre nouveau confirmé</td><td>194 (97 %)</td><td>32,4 s</td></tr>
-      <tr><td>Confirmé d'origine contre ver expert</td><td>44 (22 %)</td><td>52,6 s</td></tr>
-      <tr><td>Nouveau confirmé contre ver expert</td><td>49 (24,5 %)</td><td>49,3 s</td></tr>
-      <tr><td>Expert contre expert</td><td>96 (48 %)</td><td>53,2 s</td></tr>
+      <tr><td>Débutant d'origine contre débutant d'origine</td><td>184 (92 %)</td><td>30,2 s</td></tr>
+      <tr><td>Confirmé d'origine contre confirmé d'origine</td><td>178 (89 %)</td><td>35,9 s</td></tr>
+      <tr><td>Nouveau débutant contre nouveau débutant</td><td>187 (93,5 %)</td><td>29,1 s</td></tr>
+      <tr><td>Nouveau confirmé contre nouveau confirmé</td><td>183 (91,5 %)</td><td>34,5 s</td></tr>
+      <tr><td>Expert contre confirmé d'origine</td><td>194 (97 %)</td><td>25,4 s</td></tr>
+      <tr><td>Expert contre nouveau confirmé</td><td>193 (96,5 %)</td><td>28,8 s</td></tr>
+      <tr><td>Confirmé d'origine contre ver expert</td><td>90 (45 %)</td><td>46,1 s</td></tr>
+      <tr><td>Nouveau confirmé contre ver expert</td><td>98 (49 %)</td><td>52,8 s</td></tr>
+      <tr><td>Expert contre expert</td><td>131 (65,5 %)</td><td>36,6 s</td></tr>
     </table>
-    <p>Autrement dit, le ver expert résiste 3 fois sur 4 au poisson d'origine (contre 1 fois sur 15 pour le ver confirmé), et le poisson expert double le taux de prise contre ce ver. Les trois niveaux restent bien séparés. La décision la plus chère (ver expert) prend en moyenne moins de 0,1 ms et au pire environ 16 ms dans node, une fois par case : la page n'a pas besoin d'un Web Worker.</p>
+    <p>Le poisson confirmé attrape le ver confirmé 9 fois sur 10, mais le ver expert une fois sur deux seulement ; le poisson expert attrape presque toujours un ver confirmé, plus vite (25 à 29 s au lieu de 35 s), et deux fois sur trois le ver expert. Aucune manche n'est perdue par manque d'air du ver expert. Une décision du ver expert prend en moyenne 0,1 ms dans node, 0,4 ms dans 99 % des cas et au pire une dizaine de ms, une fois par case : la page n'a pas besoin d'un Web Worker.</p>
 
     <h3>Côté jeu</h3>
-    <p>Compte à rebours avant chaque manche avec rappel du rôle (« Vous êtes le VER »), pause (bouton, <kbd>P</kbd>, <kbd>Échap</kbd>, et automatique quand l'onglet est caché), panneau latéral avec le temps restant, les jauges d'air, les murs en réserve et la charge du pétard des deux joueurs, résumé de chaque manche (respirations, murs, démolitions, bonus), records par niveau, croix tactile et boutons Mur / Pétard, et mémoire des appuis : un appui bref sur une direction est gardé jusqu'à la prochaine case (0,45 s au plus), si bien qu'un virage n'est plus perdu quand on relâche la touche trop tôt.</p>
+    <p>Rien de tout cela ne change les règles. La nouvelle version ajoute un compte à rebours facultatif avant chaque manche avec rappel du rôle (« Vous êtes le POISSON »), la pause (bouton, <kbd>P</kbd>, <kbd>Échap</kbd>, et automatique quand l'onglet est caché), un panneau latéral avec le temps restant et, pour chaque joueur, les vrais compteurs de l'original (air sur 60, murs restants, démolitions restantes), un résumé de manche qui reprend le message de l'original (« droite a gagné en 59 secondes . ») avec les respirations, murs, démolitions et bonus de chacun, des records par niveau, une lueur autour des zones à bulles pour mieux les suivre, un halo rouge sous 15 d'air, une croix tactile et des boutons Mur / Pétard, et une mémoire des appuis : l'animal ne nage que tant que la touche est tenue, mais un appui bref sur une direction est gardé jusqu'à la prochaine case (0,45 s au plus), si bien qu'un virage n'est plus perdu quand on relâche la touche trop tôt.</p>
 
     <div class="nav"><a href="./">Version d'origine</a><a href="nouveau/">▶ Jouer à la nouvelle version</a><a href="../index.html">◀ Retour à l'accueil</a></div>
   </div>

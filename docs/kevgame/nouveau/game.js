@@ -3,10 +3,11 @@
  * The rules and the computer player live in engine.js (global KevEngine).
  *
  * Canvas = the original 600x408 window drawn with the original sprite sheet
- * (see ../game.js for the sheet layout). New in this version: fixed time step
- * (0.02 s) and seeded random numbers, countdown, pause, side panel (timer, air
- * gauges, walls, firecracker, results, records), touch pad, input buffering,
- * round summaries.
+ * (see ../game.js for the sheet layout), with the original counters on the
+ * sides of the pool. The rules are those of the original (ticks of 50 ms).
+ * New in this version: seeded random numbers, countdown, pause, side panel
+ * (timer, air, walls, firecrackers, results, records), touch pad, input
+ * buffering, round summaries.
  */
 (function () {
   'use strict';
@@ -17,7 +18,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var sheet = null;
   var OX = 48, OY = 48;     // pool origin in the background
-  var STEP = 0.02;          // fixed simulation step (s)
+  var TICK = K.CFG.tick;    // fixed simulation step: one tick of the original (50 ms)
   var reduceMotion = false;
   try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { /* ignore */ }
 
@@ -63,20 +64,19 @@
   $('settingsBtn').addEventListener('click', function () { if (phase === 'play' || phase === 'countdown') setPaused(true); $('settings').showModal(); });
 
   // ---------- Match state ----------
-  var phase = 'idle';   // idle, countdown, play, dying, signs, summary, over
+  var phase = 'idle';   // idle, countdown, play, dying (end animations), summary, over
   var phaseT = 0;
   var paused = false;
   var st = null, results = [], stats = [], match = null;
   var ai = [null, null];   // computer brains (null = human)
   var effects = [], floats = [];
   var clock = 0, acc = 0, seed = null, level = 1, onePlayer = true;
+  var endT = 0;            // ticks since the end of the round (end animations)
   var lowAirWarned = [false, false];
 
-  function names() { return onePlayer ? ['l\'ordinateur', 'le joueur'] : ['gauche', 'droite']; }
+  function names() { return onePlayer ? ['ordinateur', 'vous'] : ['gauche', 'droite']; }
   function shortName(s) { return onePlayer ? (s === 0 ? 'Ordinateur' : 'Vous') : (s === 0 ? 'Gauche' : 'Droite'); }
   function human(s) { return !ai[s]; }
-  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-  function capLines(t) { return t.split('\n').map(cap).join('\n'); }
 
   function newGame() {
     onePlayer = opts.mode === '1';
@@ -94,7 +94,7 @@
     st = K.newRound(r, K.mulberry32(seed + r * 7919));
     if (ai[0]) ai[0] = K.newBrain(level);
     if (ai[1]) ai[1] = K.newBrain(ai[1].level);
-    effects = []; floats = []; held = [[], []]; buf = [null, null]; pointer = null; acc = 0;
+    effects = []; floats = []; held = [[], []]; buf = [null, null]; pointer = null; acc = 0; endT = 0;
     lowAirWarned = [false, false];
     stats[r] = [0, 1].map(function () { return { breaths: 0, walls: 0, booms: 0, bonus: 0 }; });
     setPhase(opts.countdown ? 'countdown' : 'play');
@@ -162,45 +162,42 @@
   var panelCache = {};
   function setText(el, t) { if (el.textContent !== t) el.textContent = t; }
   function updatePanel(force) {
-    var t = st ? st.t : 0, left = Math.max(0, Math.ceil(K.CFG.roundTime - t));
+    var left = st ? K.secondsLeft(st) : 90;
     setText($('roundTitle'), st ? 'Manche ' + (st.round + 1) + ' sur 2' : 'Manche');
     setText($('timeLeft'), String(left));
     $('timer').classList.toggle('hurry', !!st && left <= 10 && phase === 'play');
-    var tw = (st ? Math.max(0, 1 - t / K.CFG.roundTime) * 100 : 100).toFixed(1) + '%';
+    var tw = (st ? Math.max(0, 1 - st.ticks / K.CFG.roundTicks) * 100 : 100).toFixed(1) + '%';
     if (panelCache.tw !== tw || force) { $('timeBar').style.width = tw; panelCache.tw = tw; }
     for (var s = 0; s < 2; s++) {
       var el = $('pl' + s), a = st ? st.animals[s] : null;
       el.classList.toggle('me', onePlayer ? s === 1 : false);
       setText(el.querySelector('.n'), shortName(s));
       setText(el.querySelector('.r'), a ? (a.kind === 'fish' ? 'Poisson' : 'Ver') + (ai[s] ? ' - ' + K.LEVELS[ai[s].level].name.toLowerCase() : '') : '-');
-      var air = a ? Math.max(0, a.air) : 1;
-      setText(el.querySelector('.airv'), Math.round(air * 100) + ' %');
+      // the real counters of the original: air 60 -> 0, walls (worm 4, fish 7), demolitions (3)
+      var max = K.CFG.airMax, air = a ? Math.max(0, a.air) : max;
+      setText(el.querySelector('.airv'), air + ' / ' + max);
       var bar = el.querySelector('.bar.air');
-      bar.classList.toggle('low', air < 0.25);
-      var aw = (air * 100).toFixed(0) + '%';
+      bar.classList.toggle('low', air < 15);
+      var aw = (air / max * 100).toFixed(0) + '%';
       if (bar.firstChild.style.width !== aw) bar.firstChild.style.width = aw;
-      var walls = a ? a.walls : 0, wtxt = '';
-      for (var i = 0; i < K.CFG.maxWalls; i++) wtxt += i < walls ? '●' : '○';
-      setText(el.querySelector('.walls'), wtxt);
-      var ch = a ? a.charge : 0;
-      setText(el.querySelector('.pv'), ch > 0 ? Math.ceil(ch) + ' s' : '-');
-      var pw = (ch / K.CFG.chargeTime * 100).toFixed(0) + '%';
-      var pb = el.querySelector('.bar.petard > i');
-      if (pb.style.width !== pw) pb.style.width = pw;
+      setText(el.querySelector('.walls'), a ? dots(a.walls, K.CFG.walls[a.kind]) : '-');
+      setText(el.querySelector('.pv'), a ? dots(a.booms, K.CFG.booms) : '-');
     }
   }
+
+  function dots(n, max) { return n + ' / ' + max; }
 
   function drawIcons() {
     if (!sheet) return;
     for (var s = 0; s < 2; s++) {
       var c = $('pl' + s).querySelector('canvas'), x = c.getContext('2d');
       x.clearRect(0, 0, 24, 24); x.imageSmoothingEnabled = false;
-      var kind = st ? st.animals[s].kind : (s === 0 ? 'fish' : 'worm');
+      var kind = st ? st.animals[s].kind : (s === 0 ? 'worm' : 'fish');
       x.drawImage(sheet, 600 + 24 * (kind === 'fish' ? 6 : 0), 24 * (s === 0 ? 1 : 3), 24, 24, 0, 0, 24, 24);
     }
   }
 
-  function fmtT(t) { return String(t).replace('.', ',') + ' s'; }
+  function fmtT(t) { return t + ' s'; } // whole seconds, as in the original
 
   function renderResults() {
     var el = $('results');
@@ -227,7 +224,7 @@
     K.LEVELS.forEach(function (L, i) {
       var x = r[i] || { w: 0, l: 0, d: 0 };
       html += '<div>' + L.name + ' : <b>' + x.w + '</b> victoire' + (x.w > 1 ? 's' : '') + ', ' + x.l + ' défaite' + (x.l > 1 ? 's' : '') + (x.d ? ', ' + x.d + ' nul' + (x.d > 1 ? 's' : '') : '') +
-        (x.best ? '<br><span class="muted">Ver attrapé le plus vite : ' + fmtT(x.best) + '</span>' : '') + '</div>';
+        (x.best ? '<br><span class="muted">Ver attrapé le plus vite : ' + fmtT(Math.floor(x.best)) + '</span>' : '') + '</div>';
     });
     $('records').innerHTML = html + '<span class="muted">Parties contre l\'ordinateur.</span>';
   }
@@ -240,8 +237,8 @@
     var lv = K.LEVELS[+opts.level].name.toLowerCase();
     showOverlay('<h2>KevGame</h2><p class="big">Le poisson et le ver</p>' +
       '<ul><li>Le <b>poisson</b> doit attraper le <b>ver</b> en moins de 90 secondes.</li>' +
-      '<li>Les deux doivent respirer dans les <b>zones à bulles</b> avant de manquer d\'air.</li>' +
-      '<li>Une <b>bouée</b> clignotante donne un mur (posé derrière soi), un <b>pétard</b> fait sauter les murs devant soi.</li>' +
+      '<li>L\'air (60) baisse d\'une unité par demi-seconde : touchez une des 2 <b>zones à bulles</b>, qui se déplacent, pour le remettre à 60.</li>' +
+      '<li>Murs derrière soi (ver 4, poisson 7), 3 démolitions devant soi ; la <b>bouée</b> clignotante et le <b>pétard</b> les rechargent.</li>' +
       '<li>2 manches, les rôles s\'inversent : le plus rapide à gagner sa manche l\'emporte.</li></ul>' +
       '<p id="ovMode">' + (opts.mode === '1' ? 'Contre l\'ordinateur (niveau ' + lv + ') : vous êtes le joueur de droite.' : 'Deux joueurs sur le même clavier.') + '</p>' +
       '<div class="btns"><button class="btn primary" id="ovPlay">Jouer</button><button class="btn" id="ovSet">Réglages</button><button class="btn" id="ovHelp">Règles</button></div>');
@@ -253,7 +250,7 @@
 
   function statTable(r) {
     var s = stats[r], rows = [['Respirations', 'breaths'], ['Murs construits', 'walls'], ['Démolitions', 'booms'], ['Bonus ramassés', 'bonus']];
-    var html = '<table><tr><th></th><th>' + shortName(0) + ' (' + (r === 0 ? 'poisson' : 'ver') + ')</th><th>' + shortName(1) + ' (' + (r === 0 ? 'ver' : 'poisson') + ')</th></tr>';
+    var html = '<table><tr><th></th><th>' + shortName(0) + ' (' + (r === 0 ? 'ver' : 'poisson') + ')</th><th>' + shortName(1) + ' (' + (r === 0 ? 'poisson' : 'ver') + ')</th></tr>';
     rows.forEach(function (x) { html += '<tr><td>' + x[0] + '</td><td>' + s[0][x[1]] + '</td><td>' + s[1][x[1]] + '</td></tr>'; });
     return html + '</table>';
   }
@@ -263,12 +260,21 @@
     if (r.winner < 0) title = 'Ex aequo';
     else if (onePlayer) title = r.winner === 1 ? 'Manche gagnée !' : 'Manche perdue';
     else title = shortName(r.winner) + ' gagne la manche';
-    showOverlay('<h2>' + title + '</h2><p>' + capLines(K.roundText(st, names())) + '</p>' + '<div class="hide-s">' + statTable(st.round) + '</div>' +
+    var m = K.roundMessage(r);
+    showOverlay('<h2>' + title + '</h2>' + origMsg(m) + '<p class="hide-s">' + K.roundText(st, names()) + '</p>' + '<div class="hide-s">' + statTable(st.round) + '</div>' +
       '<p class="hide-s">Les rôles sont maintenant inversés' + (onePlayer ? ' : vous serez le ' + (st.animals[1].kind === 'fish' ? 'ver' : 'poisson') + '.' : '.') + '</p>' +
       '<div class="btns"><button class="btn primary" id="ovNext">Manche suivante</button></div>');
     $('ovNext').addEventListener('click', function () { startRound(1); });
     $('ovNext').focus();
   }
+
+  // The message box of the original: caption and text (the names are always
+  // "gauche" and "droite", even for the computer).
+  function origMsg(m) {
+    return '<p class="big">' + esc(m.caption) + '</p><p>' + esc(m.text) + '</p>' +
+      (onePlayer ? '<p class="sub hide-s">Vous êtes « droite », l\'ordinateur « gauche ».</p>' : '');
+  }
+  function esc(t) { return t.replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
 
   function overTitle() {
     if (match.winner < 0) return 'Personne n\'a gagné';
@@ -279,7 +285,7 @@
     var title = overTitle();
     // the king (winner) or the grinning face (nobody), from the original sheet
     var face = '<canvas id="ovFace" width="24" height="24" style="width:72px;height:72px;image-rendering:pixelated" aria-hidden="true"></canvas>';
-    showOverlay('<div class="hide-s">' + face + '</div><h2>' + title + '</h2><p style="white-space:pre-line">' + capLines(match.text) + '</p>' + '<div class="hide-s">' + statTable(1) + '</div>' +
+    showOverlay('<div class="hide-s">' + face + '</div><h2>' + title + '</h2>' + origMsg(match) + '<div class="hide-s">' + statTable(1) + '</div>' +
       '<div class="btns"><button class="btn primary" id="ovAgain">Rejouer</button><button class="btn" id="ovSet2">Réglages</button></div>');
     var fc = $('ovFace').getContext('2d');
     fc.imageSmoothingEnabled = false;
@@ -324,8 +330,8 @@
   function action(side, wall) {
     if (phase !== 'play' || paused || !st || ai[side]) return;
     var a = st.animals[side];
-    if (wall) { if (!K.buildWall(st, a)) toast(a.walls ? 'Pas de place pour un mur ici' : 'Pas de mur en réserve : passez sur une bouée'); }
-    else if (!K.demolish(st, a)) toast('Pas de pétard : passez sur un pétard allumé');
+    if (wall) { if (!K.buildWall(st, a)) toast(a.walls ? 'Pas de place pour un mur derrière vous' : 'Plus de murs : passez sur la bouée clignotante'); }
+    else if (!K.demolish(st, a)) toast(a.booms ? 'Pas de mur juste devant vous' : 'Plus de démolitions : ramassez un pétard');
   }
 
   window.addEventListener('keydown', function (e) {
@@ -411,7 +417,7 @@
     return -1;
   }
 
-  // ---------- Game loop (fixed time step) ----------
+  // ---------- Game loop (fixed ticks of 50 ms, like the original Timer1) ----------
   var last = 0, speed = 1;
   function frame(now) {
     var dt = Math.min(0.1, (now - last) / 1000 || 0);
@@ -433,26 +439,30 @@
     if (phase === 'play') {
       if (resumeT > 0) { resumeT -= dt; return; }
       acc += dt;
-      while (acc >= STEP && !st.over) {
-        acc -= STEP;
+      while (acc >= TICK && !st.over) {
+        acc -= TICK;
         var wants = [0, 1].map(function (s) {
           return ai[s] ? K.aiThink(st, st.animals[s], ai[s]) : function () { return humanDir(s); };
         });
-        K.step(st, STEP, wants);
+        K.step(st, wants);
         handleEvents();
       }
       updatePanel();
-      if (st.over) { setPhase('dying'); return; }
+      if (st.over) { acc = 0; setPhase('dying'); return; }
       st.animals.forEach(function (a) {
         if (!human(a.side)) return;
-        if (a.air < 0.25 && !a.inZone && !lowAirWarned[a.side]) {
+        if (a.air < 15 && !lowAirWarned[a.side]) {
           lowAirWarned[a.side] = true;
           toast((onePlayer ? 'Vous manquez' : shortName(a.side) + ' manque') + ' d\'air : vite, une zone à bulles !');
         }
         if (a.inZone) lowAirWarned[a.side] = false;
       });
-    } else if (phase === 'dying' && phaseT > 2.2) setPhase('signs');
-    else if (phase === 'signs' && phaseT > 2.8) endOfRound();
+    } else if (st && st.over && phase !== 'idle') {
+      // the end of round animations go on (also behind the round summary)
+      acc += dt;
+      while (acc >= TICK) { acc -= TICK; endT++; }
+      if (phase === 'dying' && phaseT > 2.5) endOfRound();
+    }
   }
 
   function addFx(k, x, y, dur, extra) {
@@ -466,22 +476,19 @@
     st.events.forEach(function (e) {
       switch (e.e) {
         case 'wall': snd(3); S[e.side].walls++; break;
-        case 'boom':
-          if (e.wall >= 0) addFx('unbuild', e.x * 24, e.y * 24, 0.3, { type: e.wall });
-          addFx('boom', e.x * 24, e.y * 24, 0.55);
-          break;
-        case 'demolish': snd(6); S[e.side].booms++; break;
+        case 'fuse': S[e.side].booms++; break;
+        case 'boom': snd(6); addFx('boom', e.x * 24, e.y * 24, 0.2); break;
         case 'pick': {
           snd(8); S[e.side].bonus++;
           addFx('ring', e.x * 24 + 12, e.y * 24 + 12, 0.45);
           var a = st.animals[e.side];
-          floatText(e.what === 'buoy' ? '+1 mur' : 'Pétard !', OX + e.x * 24 + 12, OY + e.y * 24, e.what === 'buoy' ? '#9fe8ff' : '#ffd34d');
-          if (human(e.side)) toast((onePlayer ? '' : shortName(e.side) + ' - ') + (e.what === 'buoy' ? 'Bouée : un mur de plus (' + a.walls + '/' + K.CFG.maxWalls + ')' : 'Pétard : démolition possible pendant 15 s'));
+          floatText(e.what === 'buoy' ? 'Murs : ' + a.walls : 'Démolitions : ' + a.booms, OX + e.x * 24 + 12, OY + e.y * 24, e.what === 'buoy' ? '#9fe8ff' : '#ffd34d');
+          if (human(e.side)) toast((onePlayer ? '' : shortName(e.side) + ' - ') + (e.what === 'buoy' ? 'Bouée : murs rechargés (' + a.walls + ')' : 'Pétard : démolitions rechargées (' + a.booms + ')'));
           break;
         }
         case 'breath': snd(e.side === 0 ? 1 : 2, 0.6); S[e.side].breaths++; addFx('ring', e.x * 24 + 12, e.y * 24 + 12, 0.45); break;
         case 'end':
-          if (e.how === 'catch') { var p = K.pos(K.worm(st)); addFx('splash', p.x + 12, p.y + 12, 0.6); snd(7); }
+          if (e.how === 'catch') snd(7);
           else if (e.how === 'time') snd(4);
           else snd(5);
           break;
@@ -494,7 +501,7 @@
     results.push(st.result);
     renderResults();
     if (st.round === 0) { setPhase('summary'); showSummary(); return; }
-    match = K.matchResult(results, names());
+    match = K.matchResult(results);
     Lehcim.stopMusic();
     setPhase('over');
     renderResults();
@@ -502,19 +509,18 @@
     if (onePlayer) {
       var rec = loadRec(), x = rec[level] || { w: 0, l: 0, d: 0 };
       if (match.winner === 1) x.w++; else if (match.winner === 0) x.l++; else x.d++;
-      // round 2: the player is the fish
-      var r2 = results[1];
-      if (r2.how === 'catch' && r2.winner === 1 && (!x.best || r2.time < x.best)) { x.best = r2.time; record = true; }
+      // the player (right) is the fish in round 1
+      var r1 = results[0];
+      if (r1.how === 'catch' && r1.winner === 1 && (x.best == null || r1.time < x.best)) { x.best = r1.time; record = true; }
       rec[level] = x; saveRec(rec); renderRecords();
     }
     showOver();
-    if (record) Lehcim.message('Nouveau record : vous avez attrapé le ver en ' + fmtT(results[1].time) + ' (niveau ' + K.LEVELS[level].name.toLowerCase() + ') !');
+    if (record) Lehcim.message('Nouveau record : vous avez attrapé le ver en ' + fmtT(results[0].time) + ' (niveau ' + K.LEVELS[level].name.toLowerCase() + ') !');
   }
 
   // ---------- Drawing ----------
   function spr(c, r, x, y) { g.drawImage(sheet, 600 + 24 * c, 24 * r, 24, 24, Math.round(x), Math.round(y), 24, 24); }
   function sprPool(c, r, x, y) { spr(c, r, OX + x, OY + y); }
-  function sprBig(c, r, x, y, s) { g.drawImage(sheet, 600 + 24 * c, 24 * r, 24, 24, Math.round(x), Math.round(y), 24 * s, 24 * s); }
   function blink(rate) { return reduceMotion ? 1 : Math.floor(clock * rate) % 2; }
 
   function text(s, x, y, size, align, color) {
@@ -530,7 +536,7 @@
     g.drawImage(sheet, 0, 0, 600, 408, 0, 0, 600, 408);
     if (!st || phase === 'idle') return; // the start overlay covers the pool
     drawZones();
-    drawBonuses();
+    drawBonus();
     drawWalls();
     st.animals.forEach(drawAnimal);
     drawEffects();
@@ -539,14 +545,16 @@
     drawOverlay();
   }
 
+  // The 2 bubble zones (36-frame animation of the original). A soft glow,
+  // added in this version, makes them easier to spot while they move.
   function drawZones() {
-    K.ZONES.forEach(function (z, i) {
-      var zx = OX + z[0] * 24 + 12, zy = OY + z[1] * 24 + 12;
-      var grad = g.createRadialGradient(zx, zy, 4, zx, zy, 20);
-      grad.addColorStop(0, 'rgba(255,255,255,0.8)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = grad; g.fillRect(zx - 20, zy - 20, 40, 40);
-      var f = Math.floor(clock * 8 + i * 2) % 6;
-      sprPool(12 + f, 10 + (i * 2 + Math.floor(clock * 8 / 6)) % 6, z[0] * 24, z[1] * 24);
+    var f = st.ticks % 36;
+    st.zones.forEach(function (z, i) {
+      var zx = OX + z.x * 24 + 12, zy = OY + z.y * 24 + 12;
+      var grad = g.createRadialGradient(zx, zy, 3, zx, zy, 18);
+      grad.addColorStop(0, 'rgba(255,255,255,0.55)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grad; g.fillRect(zx - 18, zy - 18, 36, 36);
+      sprPool(12 + f % 6, 10 + Math.floor(f / 6), z.x * 24, z.y * 24);
       // the expert fish shows which zone it is guarding (a hint for the player)
       if (ai[0] && ai[0].guard === i && K.fish(st).side === 0 && phase === 'play') {
         g.strokeStyle = 'rgba(255,80,80,0.7)'; g.lineWidth = 2;
@@ -555,12 +563,12 @@
     });
   }
 
-  function drawBonuses() {
-    if (st.buoy) sprPool(17 + Math.floor(clock * 5) % 2, 16, st.buoy.x * 24, st.buoy.y * 24);
-    if (st.petard) {
-      var f = Math.floor(clock * 10) % 15;
-      sprPool(13 + f % 5, 6 + Math.floor(f / 5), st.petard.x * 24, st.petard.y * 24);
-    }
+  // The blinking buoy or the firecracker to pick up.
+  function drawBonus() {
+    var b = st.bonus;
+    if (!b) return;
+    var k = reduceMotion ? 0 : Math.floor((st.ticks - b.born) / 4) % 2;
+    sprPool((b.kind === 'buoy' ? 17 : 19) + k, 16, b.x * 24, b.y * 24);
   }
 
   function drawWalls() {
@@ -568,66 +576,78 @@
       for (var x = 0; x < K.COLS; x++) {
         var w = st.walls[K.idx(x, y)];
         if (!w) continue;
-        var f = Math.min(4, Math.floor((st.t - w.born) / 0.07));
-        sprPool(13 + f, w.type, x * 24, y * 24);
+        var f = Math.min(5, Math.floor((st.ticks - w.born) / 2)); // appearing animation
+        sprPool(12 + f, w.type, x * 24, y * 24);
+        if (w.fuse) { // lit firecracker on the wall (20 frames)
+          var k = Math.min(19, st.ticks - w.fuse);
+          sprPool(12 + k % 6, 6 + Math.floor(k / 6), x * 24, y * 24);
+        }
       }
     }
   }
 
-  function turnRow(a) { return 4 + 3 * a.dir + (a.turnFrom - a.dir + 3) % 4; }
+  // Turning rows: 3 rows per new direction, for the old directions
+  // new+1, new+2 (half-turn) and new+3.
+  function turnRow(a) { return 4 + 3 * a.dir + (a.prevDir - a.dir + 3) % 4; }
 
   function drawAnimal(a) {
     var p = K.pos(a), base = a.kind === 'fish' ? 6 : 0;
-    if (!a.alive) {
-      var t = phase === 'dying' ? phaseT : 9;
-      if (a.kind === 'worm' && st.result.how === 'catch') {
-        if (t < 0.25) return;
-        drawCross(p, t - 0.6);
-        return;
-      }
-      var dieFrames = a.kind === 'worm' ? 8 : 5, df = Math.floor(t / 0.12);
-      if (df < dieFrames) { sprPool(a.kind === 'worm' ? 21 + a.dir : 25, df, p.x, p.y); return; }
-      drawCross(p, t - dieFrames * 0.12);
-      return;
-    }
-    var f, r = a.dir;
-    if (a.moving) {
-      f = Math.min(5, Math.floor(a.prog * 6));
-      if (a.turnFrom >= 0) r = turnRow(a);
-    } else f = Math.floor(a.animT * (a.kind === 'fish' ? 6 : 3)) % 6;
+    if (st.over) { drawEnd(a, p); return; }
+    var f, row = a.dir;
+    if (a.moving) f = Math.floor(a.prog / 4);
+    else f = Math.floor(a.animT / (a.kind === 'fish' ? 3 : 2)) % 6;
+    if (a.turnT > 0 && a.prevDir >= 0 && a.prevDir !== a.dir) { row = turnRow(a); f = 6 - a.turnT; }
     // during the countdown: show who is who
     if (phase === 'countdown' && human(a.side)) {
       var cx = OX + p.x + 12, cy = OY + p.y + 12, rr = 16 + (reduceMotion ? 0 : Math.sin(clock * 6) * 2);
       g.strokeStyle = '#ffd34d'; g.lineWidth = 3;
       g.beginPath(); g.arc(cx, cy, rr, 0, Math.PI * 2); g.stroke();
-      text(onePlayer ? 'VOUS' : shortName(a.side).toUpperCase(), cx, cy - 28, 12, 'center', '#ffd34d');
+      text(onePlayer ? 'VOUS' : shortName(a.side).toUpperCase(), cx, cy + 30, 12, 'center', '#ffd34d');
     }
-    // out of air soon: red halo (and blinking, as in the original)
-    if (a.air < 0.25 && phase === 'play') {
+    // out of air soon: red halo (added in this version)
+    if (a.air < 15 && phase === 'play') {
       g.fillStyle = 'rgba(255,40,40,' + (reduceMotion ? 0.35 : 0.25 + 0.2 * Math.sin(clock * 10)) + ')';
       g.beginPath(); g.arc(OX + p.x + 12, OY + p.y + 12, 15, 0, Math.PI * 2); g.fill();
-      if (a.air < 0.12 && !reduceMotion && Math.floor(clock * 6) % 2) return;
     }
-    sprPool(base + f, r, p.x, p.y);
+    sprPool(base + f, row, p.x, p.y);
   }
 
-  function drawCross(p, t) {
-    if (t < 0) return;
-    sprPool(21, 8 + Math.min(8, Math.floor(t / 0.1)), p.x, p.y);
+  // End of the round, as in the original: the fish dives on the worm (splash,
+  // then its grinning face), the winner of a round lost on air or on time is
+  // the king, the fish explodes after 90 s, an animal out of air fades away
+  // and a cross rises.
+  function drawEnd(a, p) {
+    var r = st.result, t = endT;
+    if (r.how === 'catch') {
+      if (a.kind === 'worm') return;                     // swallowed
+      var wp = K.pos(K.worm(st));
+      if (t < 12) { splash(p, Math.floor(t / 4)); return; }
+      if (t < 20) return;
+      sprPool(20, t < 26 ? 3 : (t < 34 ? 6 + (t >> 2) % 2 : 3 + (t >> 3) % 3), wp.x, wp.y);
+      return;
+    }
+    if (r.winner === a.side) { sprPool(20, 14 + (t >> 3) % 2, p.x, p.y); return; } // the king
+    if (r.how === 'time') { // the fish explodes
+      if (t < 8) sprPool(14 + (t >> 1), 9, p.x, p.y);
+      return;
+    }
+    var df = t >> 1, dieFrames = a.kind === 'worm' ? 8 : 5;
+    if (df < dieFrames) sprPool(a.kind === 'worm' ? 21 + a.dir : 25, df, p.x, p.y);
+    else sprPool(21, 8 + Math.min(8, df - dieFrames), p.x, p.y);
+  }
+
+  // The fish dives on the worm: 48x48 splash frames of columns 18-19.
+  function splash(p, k) {
+    g.drawImage(sheet, 1032, 48 * Math.min(2, k), 48, 48, Math.round(OX + p.x - 12), Math.round(OY + p.y - 12), 48, 48);
   }
 
   var RINGS = [[1047, 158, 20, 20], [1042, 201, 28, 28], [1039, 245, 36, 37]];
   function drawEffects() {
     effects.forEach(function (f) {
-      var k;
-      if (f.k === 'boom') { k = Math.min(3, Math.floor(f.t / f.dur * 4)); sprPool(14 + k, 9, f.x, f.y); }
-      else if (f.k === 'unbuild') { k = Math.min(4, Math.floor(f.t / f.dur * 5)); sprPool(17 - k, f.type, f.x, f.y); }
+      if (f.k === 'boom') sprPool(14 + Math.min(3, Math.floor(f.t / f.dur * 4)), 9, f.x, f.y);
       else if (f.k === 'ring') {
         var rr = RINGS[Math.min(2, Math.floor(f.t / f.dur * 3))];
         g.drawImage(sheet, rr[0], rr[1], rr[2], rr[3], Math.round(OX + f.x - rr[2] / 2), Math.round(OY + f.y - rr[3] / 2), rr[2], rr[3]);
-      } else if (f.k === 'splash') {
-        k = Math.min(2, Math.floor(f.t / f.dur * 3));
-        g.drawImage(sheet, 1032, 48 * k, 48, 48, Math.round(OX + f.x - 24), Math.round(OY + f.y - 24), 48, 48);
       }
     });
   }
@@ -640,33 +660,27 @@
     });
   }
 
-  // Sides of the pool (as in the original): walls under the life buoy, lit
-  // firecracker, air gauge in the O2 bottle, names and roles on top.
-  var GAUGES = [[60, 378], [518, 378]];
+  // Sides of the pool, as in the original: walls left in the life buoy,
+  // demolitions left on the firecracker, air on the O2 bottle, seconds left in
+  // the "time" box (red in the last 10 s, added in this version).
+  var NUMPOS = { walls: [[22, 116], [575, 116]], booms: [[20, 246], [578, 245]], air: [[69, 388], [527, 388]] };
+  function num(v, x, y, color) {
+    g.font = 'bold 13px Arial, Helvetica, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = color || '#000'; g.fillText(String(v), x, y + 1);
+  }
   function drawPanels() {
     st.animals.forEach(function (a) {
-      var x = a.side === 0 ? 12 : 564;
-      for (var i = 0; i < a.walls; i++) spr(17, 16, x, 150 + i * 22);
-      if (a.charge > 0) {
-        var f = Math.floor(clock * 10) % 15;
-        if (a.charge > 3 || blink(6)) spr(13 + f % 5, 6 + Math.floor(f / 5), x, 266);
-        g.fillStyle = '#000'; g.fillRect(x, 293, 24, 4);
-        g.fillStyle = '#ffd200'; g.fillRect(x, 293, Math.round(24 * a.charge / K.CFG.chargeTime), 4);
-      }
-      var gx = GAUGES[a.side][0], gy = GAUGES[a.side][1], h = Math.round(19 * Math.max(0, a.air));
-      g.fillStyle = '#2a3346'; g.fillRect(gx, gy, 16, 19);
-      var low = a.air < 0.25;
-      g.fillStyle = low ? (blink(6) ? '#ff3030' : '#ffb0b0') : '#8fe4ff';
-      g.fillRect(gx, gy + 19 - h, 16, h);
-      var lx = a.side === 0 ? 8 : 592, al = a.side === 0 ? 'left' : 'right';
-      text(shortName(a.side).toUpperCase(), lx, 13, 11, al);
-      text(a.kind === 'fish' ? 'poisson' : 'ver', lx, 29, 12, al, a.kind === 'fish' ? '#d8d0ff' : '#ffffff');
+      var s = a.side;
+      num(a.walls, NUMPOS.walls[s][0], NUMPOS.walls[s][1]);
+      num(a.booms, NUMPOS.booms[s][0], NUMPOS.booms[s][1]);
+      if (st.over && st.result.winner >= 0 && st.result.winner !== a.side) {
+        // the loser's bottle disappears (sand copied from the next tiles)
+        var bx = s === 0 ? 50 : 506;
+        g.drawImage(sheet, bx + (s === 0 ? 141 : -141), 362, 42, 45, bx, 362, 42, 45);
+      } else num(a.air, NUMPOS.air[s][0], NUMPOS.air[s][1], a.air < 15 && !st.over && blink(4) ? '#d00000' : '#000');
     });
-    var left = Math.max(0, Math.ceil(K.CFG.roundTime - st.t));
-    g.font = 'bold 11px Verdana, Tahoma, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillStyle = left <= 10 && phase === 'play' && blink(4) ? '#d00000' : '#4a2000';
-    g.fillText(String(left), 299.5, 30);
-    text('Manche ' + (st.round + 1), 344, 30, 11, 'left', '#ffd34d');
+    var left = K.secondsLeft(st);
+    num(left, 299, 30, left <= 10 && phase === 'play' && blink(4) ? '#d00000' : '#000');
   }
 
   function drawOverlay() {
@@ -684,12 +698,8 @@
       }
       var sz = reduceMotion ? 46 : 46 + (1 - (phaseT % 1)) * 16;
       text(String(Math.max(1, k)), cx, cy + 50, Math.round(sz), 'center', '#ffffff');
-    } else if (phase === 'play' && (phaseT < 0.7 || resumeT > 0)) {
+    } else if (phase === 'play' && ((opts.countdown && phaseT < 0.7) || resumeT > 0)) {
       text(resumeT > 0 ? 'Prêts ?' : 'Partez !', cx, cy, 30, 'center', '#ffd34d');
-    } else if (phase === 'signs') {
-      // "stop" -> "c'est" -> "fini" signs, then the king or the grinning face
-      var s = Math.min(14, Math.floor(phaseT * 7));
-      sprBig(s, 16, cx - 48, cy - 48, 4);
     }
   }
 

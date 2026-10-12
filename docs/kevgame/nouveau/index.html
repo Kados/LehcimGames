@@ -37,7 +37,6 @@
   .bar > i { display: block; height: 100%; width: 100%; background: var(--accent); border-radius: 99px; transition: width .2s linear; }
   .bar.air > i { background: #38bdf8; }
   .bar.air.low > i { background: var(--bad); }
-  .bar.petard > i { background: #f59e0b; }
 
   .players { display: grid; grid-template-columns: 1fr; gap: 8px; }
   @media (max-width: 900px) { .players { grid-template-columns: 1fr 1fr; } }
@@ -50,7 +49,7 @@
   .pl .who > div { min-width: 0; }
   .pl .r { font-size: 13px; color: var(--ink-2); }
   .pl .l { font-size: 12px; color: var(--ink-2); display: flex; justify-content: space-between; }
-  .pl .walls { letter-spacing: 2px; font-size: 13px; }
+  .pl .walls, .pl .pv, .pl .airv { font-variant-numeric: tabular-nums; }
 
   .touchpad { padding: 0; }
   .touch { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 50px); gap: 6px; touch-action: none; }
@@ -120,19 +119,17 @@
       <div class="players">
         <div class="pl" id="pl0">
           <div class="who"><canvas width="24" height="24" aria-hidden="true"></canvas><div style="min-width:0"><div class="n"></div><div class="r"></div></div></div>
-          <div class="l"><span>Air</span><span class="airv">100 %</span></div>
+          <div class="l"><span>Air</span><span class="airv">60 / 60</span></div>
           <div class="bar air"><i></i></div>
-          <div class="l"><span>Murs</span><span class="walls"></span></div>
-          <div class="l"><span>Pétard</span><span class="pv">-</span></div>
-          <div class="bar petard"><i style="width:0"></i></div>
+          <div class="l"><span>Murs</span><span class="walls">-</span></div>
+          <div class="l"><span>Démolitions</span><span class="pv">-</span></div>
         </div>
         <div class="pl" id="pl1">
           <div class="who"><canvas width="24" height="24" aria-hidden="true"></canvas><div style="min-width:0"><div class="n"></div><div class="r"></div></div></div>
-          <div class="l"><span>Air</span><span class="airv">100 %</span></div>
+          <div class="l"><span>Air</span><span class="airv">60 / 60</span></div>
           <div class="bar air"><i></i></div>
-          <div class="l"><span>Murs</span><span class="walls"></span></div>
-          <div class="l"><span>Pétard</span><span class="pv">-</span></div>
-          <div class="bar petard"><i style="width:0"></i></div>
+          <div class="l"><span>Murs</span><span class="walls">-</span></div>
+          <div class="l"><span>Démolitions</span><span class="pv">-</span></div>
         </div>
       </div>
     </section>
@@ -160,7 +157,7 @@
         <div><b>Joueur de droite</b> : flèches, mur <kbd>Espace</kbd>, pétard <kbd>Entrée</kbd> (ou <kbd>Alt Gr</kbd>, <kbd>Ctrl</kbd> droit)</div>
         <div><b>Joueur de gauche</b> : <kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> (<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> en QWERTY), mur <kbd>1</kbd>, pétard <kbd>2</kbd></div>
         <div><b>Pause</b> : <kbd>P</kbd> ou <kbd>Échap</kbd></div>
-        <p class="sub" style="margin:4px 0 0">Contre l'ordinateur, vous êtes le joueur de droite et les deux jeux de touches marchent. Un appui bref sur une direction est retenu jusqu'à la prochaine case.</p>
+        <p class="sub" style="margin:4px 0 0">Contre l'ordinateur, vous êtes le joueur de droite et les deux jeux de touches marchent. Un animal ne nage que tant que la touche est tenue ; un appui bref est retenu jusqu'à la prochaine case.</p>
       </div>
     </section>
   </aside>
@@ -175,20 +172,26 @@
 <dialog id="help"><div class="d-head"><h2>Règles du jeu</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
   <div class="d-body">
     <p>Le jeu se joue en 2 manches. Si chaque joueur en gagne une, le vainqueur est celui qui aura remporté la sienne le plus rapidement.</p>
-    <p>Le poisson doit attraper le ver en moins de 90 secondes. Par ailleurs, tous les deux doivent respirer régulièrement en rejoignant les zones à bulles avant d'avoir épuisé leur air (jauge de la bouteille d'O<sub>2</sub>).</p>
-    <p>Evidemment, chaque joueur est tour à tour le poisson et le ver.</p>
-    <p>Chacun peut édifier un mur de bouées et de ballons s'il en a la capacité, cette dernière s'acquérant en passant sur une bouée clignotante. De même, chacun peut détruire les murs en place s'il est passé récemment sur un pétard.</p>
-    <p>La construction d'un mur est faite derrière l'animal ; la destruction se fait devant.</p>
+    <p>Le poisson doit attraper le ver en moins de 90 secondes. Par ailleurs, tous les deux doivent respirer régulièrement en rejoignant les zones à bulles avant d'avoir épuisé leur air.</p>
+    <p>Evidemment, chaque joueur est tour à tour le poisson et le ver : dans la première manche, le joueur de gauche est le ver et celui de droite le poisson ; dans la seconde, c'est l'inverse.</p>
+    <p>Chacun peut édifier des murs de bouées et de ballons et détruire les murs en place. La construction d'un mur est faite derrière l'animal ; la destruction se fait devant.</p>
     <h3>Touches</h3>
     <p><b>Joueur de gauche :</b> <kbd>Z</kbd> <kbd>Q</kbd> <kbd>S</kbd> <kbd>D</kbd> (<kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> en QWERTY), mur <kbd>1</kbd>, démolition <kbd>2</kbd>.</p>
     <p><b>Joueur de droite :</b> les flèches, mur <kbd>Espace</kbd>, démolition <kbd>Entrée</kbd> (ou <kbd>Alt Gr</kbd>, <kbd>Ctrl</kbd> droit).</p>
     <p><b>Pause :</b> <kbd>P</kbd> ou <kbd>Échap</kbd>. Le jeu se met aussi en pause quand l'onglet est caché.</p>
     <p><b>Sur écran tactile :</b> la croix et les boutons Mur et Pétard sous la piscine, ou gardez le doigt appuyé dans la piscine vers où nager.</p>
-    <p>Contre l'ordinateur, vous êtes le joueur de droite : le ver dans la première manche, le poisson dans la seconde.</p>
+    <p>Contre l'ordinateur, vous êtes le joueur de droite : le poisson dans la première manche, le ver dans la seconde.</p>
     <h3>Niveaux de l'ordinateur</h3>
-    <p><b>Débutant</b> : se trompe souvent et vise mal. <b>Confirmé</b> : le niveau de la version d'origine. <b>Expert</b> : le ver prévoit trois coups à l'avance et respire dès que c'est sans danger ; le poisson garde la zone à bulles dont le ver aura besoin et construit des murs pour l'enfermer.</p>
-    <h3>Précisions</h3>
-    <p>L'air dure 30 secondes et se recharge dans les 4 zones à bulles ; une bouée clignotante donne un mur (3 au maximum en réserve) ; un pétard permet une démolition dans les 15 secondes ; un mur fait 3 cases de large, une démolition dégage 3 cases sur 2 ; le poisson et le ver nagent à la même vitesse. Les temps de manche sont mesurés au dixième de seconde.</p>
+    <p><b>Débutant</b> et <b>Confirmé</b> : les deux niveaux du jeu d'origine. Le ver débutant tourne en rond dans son coin et va respirer tôt ; le poisson débutant vise mal et hésite près du ver. Au niveau confirmé, le poisson prend le plus court chemin et le ver garde de l'espace pour fuir. <b>Expert</b> (ajouté) : mêmes règles, mais le ver prévoit trois coups à l'avance et refait le plein d'air dès que c'est sans danger ; le poisson respire au dernier moment, guette la zone à bulles dont le ver aura besoin et pose des murs pour lui couper la route.</p>
+    <h3>Précisions (mesurées sur le jeu d'origine)</h3>
+    <ul>
+      <li>Le ver part en haut à gauche, le poisson en haut à droite ; 5 à 11 bouées et ballons sont déjà dans le bassin. Les deux nagent à la même vitesse (une case en 0,3 s), seulement tant que la touche est tenue ; une touche vers un mur fait juste tourner l'animal.</li>
+      <li>L'air vaut 60 et baisse d'une unité toutes les demi-secondes (30 s d'autonomie). Il revient d'un coup à 60 dès qu'on touche une des 2 zones à bulles ; elles partent du milieu des bords gauche et droit et sautent sur une case voisine au hasard toutes les 1,8 s.</li>
+      <li>Murs : le ver peut en poser 4, le poisson 7, un par appui, dans la case derrière lui. Passer sur la bouée clignotante remet cette réserve au maximum.</li>
+      <li>Démolitions : 3 par manche. Il faut un mur dans la case juste devant ; un pétard s'y allume et le fait sauter au bout d'une seconde. Passer sur un pétard remet le compteur à 3.</li>
+      <li>La bouée clignotante apparaît à 0, 30 et 60 s, le pétard à 15, 45 et 75 s ; chacun reste 7,5 s.</li>
+      <li>Le poisson gagne s'il touche le ver ou si le ver manque d'air ; le ver gagne si le poisson manque d'air ou au bout de 90 s (le poisson explose). Les temps sont comptés en secondes entières.</li>
+    </ul>
   </div>
   <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">J'ai compris</button></div></dialog>
 
