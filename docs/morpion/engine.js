@@ -1,18 +1,19 @@
 /*
  * Morpion - rules engine and computer player (no DOM, also loadable in node).
  *
- * Board: N x N cells, 0 = empty, 1 = player (orange), 2 = computer (grey).
+ * Board: N x N cells, 0 = empty, 1 = player (grey), 2 = computer (orange).
  * Every possible segment of 5 cells ("window") is precomputed, in 4 directions.
  *
- * Scoring rule chosen for this port (the original text only says "un point a
- * chaque fois qu'il aligne 5 billes"):
+ * Scoring rule, as observed in the original running under Wine:
  *   - a completed 5-window of one colour scores 1 point and is crossed out;
- *   - a marble may be part of several scored lines in DIFFERENT directions,
- *     but never of two scored lines in the SAME direction (so 6 in a row = 1
- *     point, 10 in a row = 2 points). This is the classic paper morpion rule.
+ *   - a marble may be part of several scored lines in different directions;
+ *   - in the SAME direction two lines may share only their end marble
+ *     (6, 7 or 8 in a row = 1 point; 9 in a row = 2 points when scored as
+ *     0-4 and 4-8). In other words a window can score only if none of its
+ *     3 inner cells is already crossed out in its direction.
  * The game ends when no window is still achievable for anybody: every window
- * either holds both colours, already contains a crossed-out marble in its
- * direction, or is full.
+ * either holds both colours, has a crossed-out inner cell in its direction,
+ * or is full.
  * Exposes: MorpionEngine (global, or module.exports under node).
  */
 (function (root) {
@@ -56,14 +57,16 @@
       }
     }
     this.cnt = [null, new Uint8Array(W), new Uint8Array(W)]; // marbles of each colour per window
-    this.usedCnt = new Uint8Array(W);  // crossed-out cells (same direction) per window
-    this.used = new Uint8Array(cells * 4);
+    this.usedCnt = new Uint8Array(W);  // crossed-out INNER cells (same direction) per window
+    this.used = new Uint8Array(cells * 4); // number of lines crossing out cell c in direction d
     this.score = [0, 0, 0];
     this.lines = [];                   // scored windows: {w, p}
     this.moves = 0;
   }
 
   // Drops a marble of player p on cell c. Returns an undo record {c, p, scored:[w...]}.
+  // One marble can score several lines of the same direction (filling the middle
+  // of 9 in a row scores 0-4 and 4-8).
   Game.prototype.play = function (c, p) {
     var cw = this.cellWins[c], cnt = this.cnt[p], i;
     this.board[c] = p; this.moves++;
@@ -73,7 +76,7 @@
       var dw = this.cellDirWins[c * 4 + d];
       for (i = 0; i < dw.length; i++) {
         var w = dw[i];
-        if (cnt[w] === 5 && this.usedCnt[w] === 0) { this.mark(w, 1); scored.push(w); break; }
+        if (cnt[w] === 5 && this.usedCnt[w] === 0) { this.mark(w, 1); scored.push(w); }
       }
     }
     for (i = 0; i < scored.length; i++) this.lines.push({ w: scored[i], p: p });
@@ -90,13 +93,18 @@
   };
 
   // Crosses out (s = 1) or restores (s = -1) the 5 cells of window w in its direction.
+  // usedCnt[v] counts the inner cells (positions 1..3) of window v that are crossed out.
   Game.prototype.mark = function (w, s) {
-    var d = this.wDir[w];
+    var d = this.wDir[w], wc = this.wCells;
     for (var i = 0; i < 5; i++) {
-      var x = this.wCells[w * 5 + i];
-      this.used[x * 4 + d] = s > 0 ? 1 : 0;
-      var dw = this.cellDirWins[x * 4 + d];
-      for (var j = 0; j < dw.length; j++) this.usedCnt[dw[j]] += s;
+      var x = wc[w * 5 + i], k = x * 4 + d, before = this.used[k];
+      this.used[k] += s;
+      if ((before === 0) === (this.used[k] === 0)) continue; // shared end: no change
+      var dw = this.cellDirWins[k];
+      for (var j = 0; j < dw.length; j++) {
+        var v = dw[j];
+        if (wc[v * 5] !== x && wc[v * 5 + 4] !== x) this.usedCnt[v] += s;
+      }
     }
   };
 
@@ -192,14 +200,17 @@
 
   var TIMEOUT = {};
 
-  // Level 1..5 -> search settings. Times are ours (the original needed up to 1min40 at level 5).
+  // Level 1..5 -> search settings. The original announces 0.5 s, 1 s, 12 s, 25 s and
+  // 1 min 40 s on the 10-10 board (1995 PCs); under Wine today level 1 answers at
+  // once, level 3 in 2-4 s and level 5 in about 10 s. Even level 1 blocks every
+  // threat, so its noise stays small. 'wait' = minimum thinking time shown (ms).
   var LEVELS = [
     null,
-    { depth: 0, width: 8, time: 100, noise: 0.7 },
-    { depth: 1, width: 12, time: 300, noise: 0.08 },
-    { depth: 2, width: 14, time: 500, noise: 0 },
-    { depth: 3, width: 12, time: 900, noise: 0 },
-    { depth: 5, width: 10, time: 1400, noise: 0 }
+    { depth: 0, width: 8, time: 100, noise: 0.15, wait: 300 },
+    { depth: 1, width: 12, time: 400, noise: 0.05, wait: 700 },
+    { depth: 2, width: 14, time: 1200, noise: 0, wait: 1800 },
+    { depth: 4, width: 12, time: 2200, noise: 0, wait: 2800 },
+    { depth: 6, width: 10, time: 3800, noise: 0, wait: 4500 }
   ];
 
   Game.prototype.negamax = function (depth, alpha, beta, p, ctx) {
@@ -210,9 +221,11 @@
     if (depth === 0) return this.evaluate(p);
     var best = -Infinity;
     for (var i = 0; i < cands.length; i++) {
-      var rec = this.play(cands[i].c, p);
-      var v = -this.negamax(depth - 1, -beta, -alpha, q, ctx);
-      this.undo(rec);
+      var rec = this.play(cands[i].c, p), v;
+      // try/finally: when the search times out (TIMEOUT thrown deep in the tree),
+      // every move of the current line is undone, not only the root move.
+      try { v = -this.negamax(depth - 1, -beta, -alpha, q, ctx); }
+      finally { this.undo(rec); }
       if (v > best) best = v;
       if (v > alpha) alpha = v;
       if (alpha >= beta) break;
@@ -224,14 +237,14 @@
   Game.prototype.bestMove = function (p, level, rnd) {
     rnd = rnd || Math.random;
     var L = LEVELS[level] || LEVELS[3], n = this.n;
-    if (this.moves === 0) { // first marble: near the centre
-      var m = (n >> 1) - 1 + Math.floor(rnd() * 2), m2 = (n >> 1) - 1 + Math.floor(rnd() * 2);
-      return m2 * n + m;
+    if (this.moves === 0) { // first marble: always (N/2-1, N/2-1), as in the original
+      var m = (n >> 1) - 1;
+      return m * n + m;
     }
     var root = this.candidates(p, Math.max(L.width, 8));
     if (!root.length) return -1;
-    // immediate point or urgent block: no need to think (level 1 sometimes misses it)
-    if (root[0].h >= 400000 && (L.depth > 0 || rnd() < 0.6)) return root[0].c;
+    // immediate point or urgent block: no need to think (the original blocks at every level)
+    if (root[0].h >= 400000) return root[0].c;
     if (L.depth === 0) { // level 1: greedy with a lot of randomness
       var pick = 0;
       while (pick < root.length - 1 && rnd() < L.noise) pick++;

@@ -1,6 +1,6 @@
 # Morpion
 
-Extrait de `morpion.zip`. « Morpion » est le nom français de ce type de jeu : ici, un jeu d'**alignement de cinq billes** (proche du gomoku) sur un damier, contre l'ordinateur. Plusieurs tailles de damier (l'aide mentionne un damier 10x10).
+Extrait de `morpion.zip`. « Morpion » est le nom français de ce type de jeu : ici, un jeu d'**alignement de cinq billes** (proche du gomoku) sur un damier, contre l'ordinateur. Trois tailles de damier : 8x8 (par défaut), 10x10 et 12x12. Le joueur a les billes grises, l'ordinateur les orange.
 
 ## Fichiers
 
@@ -18,6 +18,7 @@ Extrait de `morpion.zip`. « Morpion » est le nom français de ce type de jeu :
 - Un joueur marque un point chaque fois qu'il aligne **5 billes** de sa couleur, horizontalement, verticalement ou en diagonale.
 - Le jeu s'arrête automatiquement quand aucun des deux joueurs ne peut plus progresser ; le gagnant est celui qui a le plus de points.
 - On choisit qui commence. Il est impossible d'abandonner pendant que l'ordinateur réfléchit.
+- Fonctionnement vérifié dans le jeu d'origine : une bille peut compter dans plusieurs lignes de directions différentes ; dans une même direction, deux lignes ne peuvent partager que leur bille d'extrémité (6 à 8 billes alignées = 1 point, 9 = 2 points). Chaque ligne est rayée d'un trait rouge continu. 5 niveaux, de « Niveau 1 (0.5s.) » à « Niveau 5 (1min40s) ».
 
 ## Version navigateur
 
