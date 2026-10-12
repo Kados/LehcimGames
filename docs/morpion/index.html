@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Morpion - LehcimGames</title>
+<link rel="stylesheet" href="../common/style.css">
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>Morpion</span></div>
+  <div class="toolbar">
+    <button id="new">Nouvelle partie</button>
+    <label>Plateau
+      <select id="size">
+        <option value="8">8-8</option>
+        <option value="10" selected>10-10</option>
+        <option value="12">12-12</option>
+        <option value="15">15-15</option>
+      </select>
+    </label>
+    <label>Niveau
+      <select id="level">
+        <option value="1">Niveau 1</option>
+        <option value="2">Niveau 2</option>
+        <option value="3" selected>Niveau 3</option>
+        <option value="4">Niveau 4</option>
+        <option value="5">Niveau 5</option>
+      </select>
+    </label>
+    <label>Qui commence ?
+      <select id="first">
+        <option value="1">Le Joueur Commence</option>
+        <option value="2">L'Ordinateur Commence</option>
+      </select>
+    </label>
+    <button id="giveup">Abandonner</button>
+    <button data-help>Règles</button>
+    <button data-mute></button>
+    <button data-about>A propos</button>
+    <span class="status" id="status"></span>
+  </div>
+  <div class="stage"><canvas class="game" id="game" width="400" height="320"></canvas></div>
+  <p class="hint">Clique (ou touche) une case libre pour y déposer une bille orange. L'ordinateur joue les billes grises.
+    5 billes alignées = 1 point. La taille du plateau et "Qui commence ?" s'appliquent à la prochaine partie.</p>
+</div>
+
+<dialog id="help"><h2>Règles du Morpion</h2><div class="body">
+  <p>Chaque joueur dépose à son tour une bille sur une case du damier (case que tu désignes par un clic de souris).</p>
+  <p>Chaque joueur gagne un point à chaque fois qu'il aligne 5 billes de sa couleur, horizontalement, verticalement ou en diagonale.</p>
+  <p>Le jeu s'arrête (automatiquement) dès que les 2 joueurs ne peuvent plus progresser, mais pas avant ; joue donc les derniers coups...</p>
+  <p>Le gagnant est celui qui a le plus de points.</p>
+  <p>Attention, quand l'ordinateur réfléchit, il est impossible d'abandonner. Reste calme...</p>
+  <h3>Précisions de cette version</h3>
+  <ul>
+    <li>Tes billes sont orange, celles de l'ordinateur sont grises. Les scores s'affichent dans les deux carrés de couleur.</li>
+    <li>Chaque alignement de 5 qui rapporte un point est barré d'un trait rouge.</li>
+    <li>Une bille peut servir à plusieurs alignements dans des directions différentes, mais jamais à deux alignements dans la même direction :
+      6 billes en ligne rapportent 1 point, 10 billes en ligne en rapportent 2.</li>
+    <li>La partie s'arrête quand plus aucun alignement de 5 n'est réalisable pour personne (chaque segment de 5 cases contient des billes des deux couleurs, ou une bille déjà barrée dans cette direction, ou est plein).</li>
+    <li>Niveau de réflexion de l'Ordinateur : de 1 (débutant) à 5 (le plus fort). Dans l'original, les durées de réflexion allaient de 0,5 s à 1 min 40 s sur le plateau 10-10 ; ici l'ordinateur répond toujours en moins de 2 secondes.</li>
+    <li>Plateaux : 8-8, 10-10 et 12-12 comme l'original, plus un 15-15 en bonus.</li>
+  </ul>
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<dialog id="about"><h2>A propos de...</h2><div class="body">
+  <p><b>Morpion</b><br>Concepteur : Lehcim Noil</p>
+  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation.</p>
+  <p>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes et ses sons d'origine.</p>
+</div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<script src="../common/lehcim.js"></script>
+<script src="engine.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
