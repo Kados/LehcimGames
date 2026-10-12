@@ -3,20 +3,28 @@
  * Shared by the page (game.js), the Web Worker (ai-worker.js, via importScripts)
  * and node test scripts (module.exports).
  *
- * Board: N x N cells, a black ring (colour 0) around a 14 x 14 coloured centre.
- * Colours are bit masks of the primaries RED = 1, BLUE = 2, YEL = 4.
- * Red (player 0) wants the grey globule to reach the top or bottom band,
- * yellow (player 1) the left or right band.
+ * Rules measured on the original program (see ../algorithme.html):
+ * - 13 x 13 board: a ring of black cells around 11 x 11 coloured cells.
+ * - Colours 0..5 sit on a wheel (red, orange, yellow, green, blue, magenta), 6 is
+ *   brown, 7 the black ring. Applying a colour moves a cell one step towards it on
+ *   the wheel, the opposite colour turns brown, brown takes the applied colour.
+ * - Red (player 0) applies blue or red and wants the grey globule to reach the top
+ *   or bottom band; yellow (player 1) applies blue or yellow, left or right band.
+ * - A crossing starts from any side cell (not a corner) and goes straight to the
+ *   opposite side; the arrival cell must be free of pyramids and globules. The
+ *   pyramid of the crossing globule then moves to the start cell.
  */
 (function (root) {
   'use strict';
 
-  var N = 16;
-  var RED = 1, BLUE = 2, YEL = 4;
-  var PRIMARIES = [RED, BLUE, YEL];
-  var GREY_STEP_MS = 895;   // mean time of one grey step (420 ms slide + 150..800 ms pause)
-  var H_SHORT = 16;         // short horizon of the absorption computation (about 14 s)
-  var H_LONG = 40;          // longer horizon, lower weight (about 36 s)
+  var N = 13;
+  var RED = 0, ORANGE = 1, YEL = 2, GREEN = 3, BLUE = 4, MAGENTA = 5, BROWN = 6, BLACK = 7;
+  var START_COLOURS = [RED, ORANGE, YEL, GREEN, MAGENTA];
+  var OWN = [RED, YEL];                    // second application colour (the first is blue)
+  var APPS = [[BLUE, RED], [BLUE, YEL]];   // application colours of each globule
+  var GREY_STEP_MS = 730;   // mean time of one grey step (480 ms slide + 0..500 ms pause)
+  var H_SHORT = 16;         // short horizon of the absorption computation (about 12 s)
+  var H_LONG = 40;          // longer horizon, lower weight (about 29 s)
 
   function idx(c, r) { return r * N + c; }
   function colOf(i) { return i % N; }
@@ -26,8 +34,29 @@
   function inside(c, r) { return c >= 0 && r >= 0 && c < N && r < N; }
   // 0 = red zone (top / bottom), 1 = yellow zone (left / right)
   function zoneOwner(c, r) { return (r === 0 || r === N - 1) ? 0 : 1; }
-  // Colour mixing: XOR of the primaries; a pure colour keeps itself.
-  function mix(m, a) { var n = m ^ a; return n === 0 ? a : n; }
+
+  // Colour wheel mixing (measured on the original).
+  function mix(c, a) {
+    if (c === BROWN || c === a) return a;
+    var d = (a - c + 6) % 6;
+    if (d === 3) return BROWN;
+    return d < 3 ? (c + 1) % 6 : (c + 5) % 6;
+  }
+
+  // PASSES[c * 8 + g]: smallest number of crossings (red, blue or yellow applied)
+  // that turn colour c into colour g. Used by the connection cost.
+  var PASSES = new Uint8Array(64);
+  (function () {
+    for (var c = 0; c < 7; c++) {
+      var d = [99, 99, 99, 99, 99, 99, 99], q = [c];
+      d[c] = 0;
+      while (q.length) {
+        var x = q.shift();
+        [RED, BLUE, YEL].forEach(function (a) { var y = mix(x, a); if (d[y] > d[x] + 1) { d[y] = d[x] + 1; q.push(y); } });
+      }
+      for (var g = 0; g < 7; g++) PASSES[c * 8 + g] = d[g];
+    }
+  })();
 
   var RING_CELL = new Uint8Array(N * N);
   var RED_EXIT = new Uint8Array(N * N);     // 1 on the top and bottom bands
@@ -44,7 +73,7 @@
     }
   })();
 
-  // Ring cells in clockwise order.
+  // Ring cells in clockwise order (48 cells).
   var RING = [];
   (function () {
     var c, r;
@@ -56,25 +85,27 @@
   var RING_POS = {};
   RING.forEach(function (v, k) { RING_POS[v] = k; });
 
-  // Shortest walk along the ring from a to b that avoids the cell 'block'.
-  // Returns the list of cells (without a) or null.
-  function ringPath(a, b, block) {
+  function has(list, x) { for (var i = 0; i < list.length; i++) if (list[i] === x) return true; return false; }
+
+  // Shortest walk along the ring from a to b avoiding the cells of 'blocks'
+  // (corners are walkable). Returns the list of cells (without a) or null.
+  function ringPath(a, b, blocks) {
     if (a === b) return [];
     var L = RING.length, best = null;
-    [1, -1].forEach(function (d) {
-      var path = [], k = RING_POS[a];
+    for (var s = 0; s < 2; s++) {
+      var d = s ? -1 : 1, path = [], k = RING_POS[a], ok = true;
       for (var n = 0; n < L; n++) {
         k = (k + d + L) % L;
-        if (RING[k] === block) return;
+        if (has(blocks, RING[k])) { ok = false; break; }
         path.push(RING[k]);
         if (RING[k] === b) break;
       }
-      if (!best || path.length < best.length) best = path;
-    });
+      if (ok && (!best || path.length < best.length)) best = path;
+    }
     return best;
   }
 
-  // Crossing line starting at ring cell s: {id, dc, dr, cells (central), end}.
+  // Crossing line starting at ring cell s: {id, start, dc, dr, cells (11), end}.
   // Lines are precomputed once and shared (never mutate them).
   var LINE_AT = [];
   (function () {
@@ -90,22 +121,18 @@
   })();
   function lineFrom(s) { return LINE_AT[s] || null; }
 
-  // Starting cells of all legal crossings for a globule whose previous line is
-  // 'lastLine', the other globule standing on 'other', the grey globule on the
-  // cells of 'greyBlock' (one cell, two while it slides).
-  function legalLines(pyr, lastLine, other, greyBlock) {
+  // Crossings a globule standing on 'pos' can make: any side cell it can walk to
+  // within maxSteps (pyramids and the other globule block the walk), whose arrival
+  // cell holds no pyramid and no globule. blocks = [own pyramid, other pyramid,
+  // other globule] (-1 for none). Returns [{line, path}].
+  function legalCrossings(pos, blocks, maxSteps) {
     var out = [];
     for (var n = 0; n < RING.length; n++) {
-      var s = RING[n];
-      if (s === other) continue;
-      var L = LINE_AT[s];
-      if (!L || L.id === lastLine || L.end === other) continue;
-      var ok = true;
-      for (var j = 0; j < L.cells.length && ok; j++) {
-        var x = L.cells[j];
-        if (pyr[x] || greyBlock.indexOf(x) >= 0) ok = false;
-      }
-      if (ok) out.push(L);
+      var s = RING[n], L = LINE_AT[s];
+      if (!L || has(blocks, s) || has(blocks, L.end)) continue;
+      var path = ringPath(pos, s, blocks);
+      if (!path || path.length > maxSteps) continue;
+      out.push({ line: L, path: path });
     }
     return out;
   }
@@ -121,12 +148,11 @@
   var bfsSeen = new Int32Array(N * N), bfsStamp = 0;
   var bfsQueue = new Int16Array(N * N);
 
-  // Region the grey globule can roam from the start cells (cells of the same
-  // colour connected to them, without pyramid), its free exits, and the smallest
-  // distances to the red / yellow bands. 'influence' (optional Uint8Array) is set
-  // to 1 on the region and on its interior neighbours: a crossing that touches
-  // none of these cells cannot change the region.
-  function region(colors, pyr, starts, occA, occB, influence) {
+  // Region the grey globule can roam from the start cells (same colour, connected),
+  // its free exits (ring cells not in 'blk': pyramids and globules) and the smallest
+  // distances to the red / yellow bands. 'influence' (optional Uint8Array) is set to
+  // 1 on the region and on its interior neighbours.
+  function region(colors, starts, blk, influence) {
     bfsStamp++;
     var head = 0, tail = 0, exitR = 0, exitY = 0, minR = 99, minY = 99;
     for (var s = 0; s < starts.length; s++) {
@@ -145,12 +171,12 @@
         if (RING_CELL[j]) {
           if (bfsSeen[j] !== bfsStamp) {
             bfsSeen[j] = bfsStamp;
-            if (j !== occA && j !== occB) { if (RED_EXIT[j]) exitR++; else exitY++; }
+            if (!has(blk, j)) { if (RED_EXIT[j]) exitR++; else exitY++; }
           }
           continue;
         }
         if (influence) influence[j] = 1;
-        if (bfsSeen[j] === bfsStamp || pyr[j] || colors[j] !== colors[i]) continue;
+        if (bfsSeen[j] === bfsStamp || colors[j] !== colors[i]) continue;
         bfsSeen[j] = bfsStamp; bfsQueue[tail++] = j;
       }
     }
@@ -159,16 +185,15 @@
 
   // Probability that the grey globule's random walk reaches a red band / a yellow
   // band within H_SHORT and H_LONG steps. Same rules as the game: at each step it
-  // moves uniformly to a free neighbour that is black (ring, not occupied by a
-  // globule) or of the same colour without pyramid; it stays put when there is none.
-  // starts: cells, mass: their probabilities (default 1 each).
+  // moves uniformly to a free neighbour that is black (ring, not a pyramid or a
+  // globule) or of the same colour as its cell; it stays put when there is none.
   // exitMass (optional Float64Array): filled with the short-horizon probability of
   // leaving through each ring cell (for the on-screen aid).
   var mCur = new Float64Array(N * N), mNext = new Float64Array(N * N);
   var actCur = new Int16Array(N * N), actNext = new Int16Array(N * N);
   var inNext = new Int32Array(N * N), stepStamp = 0;
 
-  function absorb(colors, pyr, starts, mass, occA, occB, exitMass) {
+  function absorb(colors, starts, mass, blk, exitMass) {
     var nCur = 0, k, total = 0;
     for (k = 0; k < starts.length; k++) {
       var m0 = mass ? mass[k] : 1;
@@ -186,14 +211,14 @@
         var nb = NB[i], no = 0, col = colors[i];
         for (k = 0; k < nb.length; k++) {
           var j = nb[k];
-          if (RING_CELL[j]) { if (j !== occA && j !== occB) opts[no++] = j; }
-          else if (!pyr[j] && colors[j] === col) opts[no++] = j;
+          if (RING_CELL[j]) { if (!has(blk, j)) opts[no++] = j; }
+          else if (colors[j] === col) opts[no++] = j;
         }
         if (no === 0) { opts[0] = i; no = 1; }
         var share = mi / no;
         for (k = 0; k < no; k++) {
           var x = opts[k];
-          if (RING_CELL[x] && x !== i) {
+          if (RING_CELL[x]) {
             if (RED_EXIT[x]) aR += share; else aY += share;
             if (exitMass && t <= H_SHORT) exitMass[x] += share;
           } else {
@@ -202,7 +227,6 @@
           }
         }
       }
-      // swap
       var tm = mCur; mCur = mNext; mNext = tm;
       var ta = actCur; actCur = actNext; actNext = ta;
       nCur = nNext;
@@ -213,20 +237,22 @@
     return { shortR: sR, shortY: sY, longR: aR, longY: aY };
   }
 
-  // Connection cost: how many colour changes (primaries to add or remove) the
-  // cells of the cheapest path from the grey globule to a red band / a yellow
-  // band still need before the grey can walk it (cells of its own colour cost 0).
-  // Gives a direction while the grey is still enclosed, like distances in Hex.
-  var POP = [0, 1, 1, 2, 1, 2, 2, 3];
+  // Connection cost: how many crossings ("passes" of red, blue or yellow) the cells
+  // of the cheapest path from the grey globule to a red band / a yellow band still
+  // need before the grey can walk it. The path may use any target colour among the
+  // grey's current colour, red, blue and yellow (the grey's own cell is repainted
+  // too). Cells of the right colour cost 0, like distances in Hex.
   var cDist = new Int16Array(N * N), cStamp = new Int32Array(N * N), cRun = 0;
-  var buckets = [];
-  for (var b0 = 0; b0 < 64; b0++) buckets.push([]);
-  function connection(colors, pyr, start, occA, occB) {
+  var MAXD = 63, buckets = [];
+  for (var b0 = 0; b0 <= MAXD; b0++) buckets.push([]);
+  function connectionTo(colors, start, blk, g, best) {
     cRun++;
-    var g = colors[start], cR = 99, cY = 99, top = 0, maxD = 63;
-    for (var b = 0; b <= maxD; b++) buckets[b].length = 0;
-    cStamp[start] = cRun; cDist[start] = 0; buckets[0].push(start);
-    for (var d = 0; d <= maxD && d < Math.max(cR, cY); d++) {
+    var cR = best[0], cY = best[1];
+    for (var b = 0; b <= MAXD; b++) buckets[b].length = 0;
+    var d0 = PASSES[colors[start] * 8 + g];
+    if (d0 >= Math.max(cR, cY)) return;
+    cStamp[start] = cRun; cDist[start] = d0; buckets[d0].push(start);
+    for (var d = d0; d <= MAXD && d < Math.max(cR, cY); d++) {
       var B = buckets[d];
       for (var q = 0; q < B.length; q++) {
         var i = B[q];
@@ -235,50 +261,58 @@
         for (var k = 0; k < nb.length; k++) {
           var j = nb[k];
           if (RING_CELL[j]) {
-            if (j === occA || j === occB) continue;
+            if (has(blk, j)) continue;
             if (RED_EXIT[j]) { if (d < cR) cR = d; } else if (d < cY) cY = d;
             continue;
           }
-          if (pyr[j]) continue;
-          var nd = d + POP[colors[j] ^ g];
-          if (nd > maxD) continue;
+          var nd = d + PASSES[colors[j] * 8 + g];
+          if (nd > MAXD) continue;
           if (cStamp[j] !== cRun || nd < cDist[j]) { cStamp[j] = cRun; cDist[j] = nd; buckets[nd].push(j); }
         }
       }
     }
-    return { red: Math.min(cR, 12), yel: Math.min(cY, 12) };
+    best[0] = cR; best[1] = cY;
+  }
+  function connection(colors, start, blk) {
+    var best = [99, 99], gc = colors[start];
+    connectionTo(colors, start, blk, gc, best);
+    if (gc !== RED) connectionTo(colors, start, blk, RED, best);
+    if (gc !== BLUE) connectionTo(colors, start, blk, BLUE, best);
+    if (gc !== YEL) connectionTo(colors, start, blk, YEL, best);
+    return { red: Math.min(best[0], 20), yel: Math.min(best[1], 20) };
   }
 
   // Board evaluation from red's point of view.
-  //   10 x (P(red) - P(yellow)) within ~14 s, 3 x the same within ~36 s,
-  //   + W_CONN x (yellow connection cost - red connection cost),
+  //   10 x (P(red) - P(yellow)) within ~12 s, 3 x the same within ~29 s,
+  //   + W.conn x (yellow connection cost - red connection cost),
   //   + 0.05 x (distance to yellow bands - distance to red bands) as a last tie-break.
-  var W = { conn: 0.3, worst: 0.55 };
+  var W = { conn: 0.4, worst: 0.55 };
   var STATS = { evals: 0 };
-  function evaluate(colors, pyr, starts, occA, occB) {
+  function evaluate(colors, starts, blk) {
     STATS.evals++;
-    var reg = region(colors, pyr, starts, occA, occB, null);
+    var reg = region(colors, starts, blk, null);
     var score = 0.05 * (reg.minY - reg.minR);
-    if (W.conn) { var cc = connection(colors, pyr, starts[0], occA, occB); score += W.conn * (cc.yel - cc.red); }
+    if (W.conn) { var cc = connection(colors, starts[0], blk); score += W.conn * (cc.yel - cc.red); }
     if (reg.exitR + reg.exitY === 0) return score;   // enclosed: nothing to propagate
-    var p = absorb(colors, pyr, starts, null, occA, occB, null);
+    var p = absorb(colors, starts, null, blk, null);
     return score + 10 * (p.shortR - p.shortY) + 3 * (p.longR - p.longY);
   }
 
   // Detailed analysis for the on-screen aid.
-  function analyse(colors, pyr, greyCell, occA, occB) {
+  function analyse(colors, greyCell, blk) {
     var infl = new Uint8Array(N * N);
-    var reg = region(colors, pyr, [greyCell], occA, occB, infl);
+    var reg = region(colors, [greyCell], blk, infl);
     var cells = [];
     var col = colors[greyCell];
     for (var i = 0; i < N * N; i++) if (bfsSeen[i] === bfsStamp && !RING_CELL[i] && colors[i] === col) cells.push(i);
     var exitMass = new Float64Array(N * N);
-    var p = (reg.exitR + reg.exitY) ? absorb(colors, pyr, [greyCell], null, occA, occB, exitMass)
+    var p = (reg.exitR + reg.exitY) ? absorb(colors, [greyCell], null, blk, exitMass)
       : { shortR: 0, shortY: 0, longR: 0, longY: 0 };
     var exits = [];
     for (var j = 0; j < N * N; j++) if (exitMass[j] > 0) exits.push({ cell: j, p: exitMass[j] });
+    var cc = connection(colors, greyCell, blk);
     return { cells: cells, exits: exits, shortR: p.shortR, shortY: p.shortY, longR: p.longR, longY: p.longY,
-      score: evaluate(colors, pyr, [greyCell], occA, occB) };
+      connRed: cc.red, connYel: cc.yel, score: evaluate(colors, [greyCell], blk) };
   }
 
   // ---------- Search ----------
@@ -287,9 +321,9 @@
 
   // A resumable search: step(ms) works for at most about ms milliseconds and
   // returns true when finished; result() gives the chosen move.
-  // st = { colors, pyr, greyCell, greyBlock, me: {k, cell, lastLine, app},
-  //        other: {cell, lastLine}, maxSteps, depth (1 or 2), noise (0..), budgetMs,
-  //        prune (default true), rand (optional function) }
+  // st = { colors, greyCell, me: {k, cell, app, pyr}, other: {k, cell, pyr},
+  //        maxSteps, otherSteps, depth (1, 2 or 3), noise (0..), budgetMs, rand }
+  // pyr = cell of the globule's pyramid (-1 for none).
   function Search(st) {
     this.st = st;
     this.sign = st.me.k === 0 ? 1 : -1;
@@ -299,105 +333,129 @@
     this.cand = [];
     this.next = 0;
     this.best = null;
-    this.stats = { moves: 0, kept: 0, deepened: 0, evals: 0, replyEvals: 0, cutoffs: 0, ms: 0 };
+    this.deepList = [];
+    this.next3 = 0;
+    this.stats = { moves: 0, deepened: 0, third: 0, evals: 0, cutoffs: 0, ms: 0 };
   }
 
+  // Values of all crossings of the globule 'who' (me or other) on board 'colors'
+  // from the point of view of this.sign, with the other side's position given.
   Search.prototype.generate = function () {
-    var st = this.st, me = st.me, other = st.other, prune = st.prune !== false;
-    var lines = legalLines(st.pyr, me.lastLine, other.cell, st.greyBlock);
-    var infl = new Uint8Array(N * N);
-    region(st.colors, st.pyr, [st.greyCell], -1, -1, infl);
-    var endMemo = {}, self = this;
-    lines.forEach(function (L) {
-      var path = ringPath(me.cell, L.start, other.cell);
-      if (!path || path.length > st.maxSteps) return;
-      var touches = false;
-      for (var j = 0; j < L.cells.length; j++) if (infl[L.cells[j]]) { touches = true; break; }
-      var apps = PRIMARIES;
-      self.stats.moves += 3;
-      // A crossing that does not touch the grey region (or its neighbours) gives
-      // the same board value whatever the colour: keep one representative.
-      if (prune && !touches) apps = [me.app];
-      apps.forEach(function (a) {
-        var s1;
-        if (prune && !touches) {
-          if (endMemo[L.end] === undefined) endMemo[L.end] = self.sign * evaluate(st.colors, st.pyr, [st.greyCell], L.end, other.cell);
-          s1 = endMemo[L.end];
-        } else {
-          s1 = self.sign * evaluate(applyLine(st.colors, L, a), st.pyr, [st.greyCell], L.end, other.cell);
-        }
-        var pen = path.length * 0.01 + (a !== me.app ? 0.005 : 0);
-        self.cand.push({ line: L, start: L.start, app: a, path: path, s1: s1, pen: pen, v: s1 - pen, deep: false, touches: touches });
+    var st = this.st, me = st.me, other = st.other, self = this;
+    var moves = legalCrossings(me.cell, [me.pyr, other.pyr, other.cell], st.maxSteps);
+    moves.forEach(function (mv) {
+      var L = mv.line;
+      APPS[me.k].forEach(function (a) {
+        self.stats.moves++;
+        var s1 = self.sign * evaluate(applyLine(st.colors, L, a), [st.greyCell], [other.pyr, L.start, L.end, other.cell]);
+        var pen = mv.path.length * 0.01 + (a !== me.app ? 0.005 : 0);
+        self.cand.push({ line: L, start: L.start, app: a, path: mv.path, s1: s1, pen: pen, v: s1 - pen, deep: false });
       });
     });
-    this.stats.kept = this.cand.length;
     // best-first order for the deepening
-    this.cand.sort(function (x, y) { return (y.s1 - y.pen) - (x.s1 - x.pen); });
+    this.cand.sort(function (x, y) { return y.v - x.v; });
   };
 
-  // Opponent's best answer to candidate m (it minimises our score). Stops early
-  // when the value can no longer beat 'bound'.
-  Search.prototype.deepen = function (m, bound) {
-    var st = this.st, other = st.other, prune = st.prune !== false;
+  // Replies of the other globule after candidate m, worst ones (for us) first.
+  // Returns the list of {line, app, s2, colors?}; stops early when the deepened
+  // value can no longer beat 'bound'.
+  Search.prototype.deepen = function (m, bound, keep) {
+    var st = this.st, other = st.other, sign = this.sign;
     var after = applyLine(st.colors, m.line, m.app);
-    var replies = legalLines(st.pyr, other.lastLine, m.line.end, st.greyBlock);
+    var replies = legalCrossings(other.cell, [other.pyr, m.line.start, m.line.end], st.otherSteps);
+    // replies touching the grey's region (or its neighbours) first: they are the dangerous ones
     var infl = new Uint8Array(N * N);
-    region(after, st.pyr, [st.greyCell], -1, -1, infl);
-    var worst = m.s1, memo = {}, sign = this.sign, cut = false;
-    // touching replies first: they are the dangerous ones
-    var touching = [], quiet = [];
-    for (var r = 0; r < replies.length; r++) {
-      var L = replies[r], t = false;
-      for (var j = 0; j < L.cells.length; j++) if (infl[L.cells[j]]) { t = true; break; }
-      (t || !prune ? touching : quiet).push(L);
-    }
-    for (var a = 0; a < touching.length && !cut; a++) {
-      for (var c = 0; c < 3; c++) {
-        this.stats.replyEvals++;
-        var s2 = sign * evaluate(applyLine(after, touching[a], PRIMARIES[c]), st.pyr, [st.greyCell], m.line.end, touching[a].end);
+    region(after, [st.greyCell], [], infl);
+    replies.sort(function (x, y) { return touch(y.line, infl) - touch(x.line, infl); });
+    var worst = m.s1, cut = false, list = keep ? [] : null;
+    var save = new Uint8Array(N - 2);
+    for (var r = 0; r < replies.length && !cut; r++) {
+      var L = replies[r].line, cells = L.cells, k;
+      for (var c = 0; c < 2; c++) {
+        var a = APPS[other.k][c];
+        for (k = 0; k < cells.length; k++) { save[k] = after[cells[k]]; after[cells[k]] = mix(save[k], a); }
+        var s2 = sign * evaluate(after, [st.greyCell], [m.line.start, L.start, m.line.end, L.end]);
+        if (list) list.push({ line: L, app: a, s2: s2 });
+        for (k = 0; k < cells.length; k++) after[cells[k]] = save[k];
         if (s2 < worst) worst = s2;
-        if ((1 - W.worst) * m.s1 + W.worst * worst - m.pen < bound) { cut = true; break; }
+        if (!keep && (1 - W.worst) * m.s1 + W.worst * worst - m.pen < bound) { cut = true; break; }
       }
-    }
-    for (var q = 0; q < quiet.length && !cut; q++) {
-      var e = quiet[q].end;
-      if (memo[e] === undefined) { this.stats.replyEvals++; memo[e] = sign * evaluate(after, st.pyr, [st.greyCell], m.line.end, e); }
-      if (memo[e] < worst) worst = memo[e];
-      if ((1 - W.worst) * m.s1 + W.worst * worst - m.pen < bound) cut = true;
     }
     if (cut) this.stats.cutoffs++;
     m.deep = true;
+    m.worst = worst;
     m.v = (1 - W.worst) * m.s1 + W.worst * worst - m.pen;
+    if (list) { list.sort(function (x, y) { return x.s2 - y.s2; }); m.replies = list; m.after = after; }
+  };
+  function touch(L, infl) { for (var j = 0; j < L.cells.length; j++) if (infl[L.cells[j]]) return 1; return 0; }
+
+  // Third ply (expert): for each of the 5 best candidates, its 3 most dangerous
+  // replies are answered by our best crossing; the value of each line becomes the
+  // value after our answer (we get to play again before the grey goes far).
+  Search.prototype.third = function (m) {
+    var st = this.st, me = st.me, sign = this.sign, worst3 = Infinity;
+    var replies = m.replies.slice(0, 3);
+    replies.forEach(function (rp) {
+      var b2 = applyLine(m.after, rp.line, rp.app), best = rp.s2;
+      var mine = legalCrossings(m.line.end, [m.line.start, rp.line.start, rp.line.end], st.otherSteps);
+      mine.forEach(function (mv) {
+        APPS[me.k].forEach(function (a) {
+          var s3 = sign * evaluate(applyLine(b2, mv.line, a), [st.greyCell], [rp.line.start, mv.line.start, mv.line.end, rp.line.end]);
+          if (s3 > best) best = s3;
+        });
+      });
+      // the reply's own value still counts: the grey moves during our answer
+      var v = 0.5 * rp.s2 + 0.5 * best;
+      if (v < worst3) worst3 = v;
+    });
+    if (worst3 === Infinity) worst3 = m.worst;
+    m.v3 = (1 - W.worst) * m.s1 + W.worst * worst3 - m.pen;
+    this.stats.third++;
   };
 
   Search.prototype.step = function (ms) {
     var t0 = now(), st = this.st, e0 = STATS.evals;
+    var over = function (self) { return self.spent + (now() - t0) >= st.budgetMs; };
     if (this.phase === 0) {
       this.generate();
-      this.phase = (st.depth >= 2 && this.cand.length > 1) ? 1 : 2;
+      this.phase = (st.depth >= 2 && this.cand.length > 1) ? 1 : 3;
     }
     while (this.phase === 1) {
-      if (this.next >= this.cand.length || this.spent + (now() - t0) >= st.budgetMs) { this.phase = 2; break; }
+      if (this.next >= this.cand.length || over(this)) { this.phase = st.depth >= 3 ? 2 : 3; break; }
       if (now() - t0 >= ms) break;
       var m = this.cand[this.next++];
       // Upper bound of a deepened value is s1 - pen: once it is below the best
       // deepened value, no later candidate can win (they are sorted).
-      if (this.best && m.s1 - m.pen <= this.best.v) { this.phase = 2; break; }
-      this.deepen(m, this.best ? this.best.v : -Infinity);
+      if (this.best && m.v <= this.best.v) { this.phase = st.depth >= 3 ? 2 : 3; break; }
+      this.deepen(m, this.best ? this.best.v : -Infinity, false);
       this.stats.deepened++;
       if (!this.best || m.v > this.best.v) this.best = m;
+    }
+    if (this.phase === 2 && !this.deepList.length) {
+      // the 5 best deepened candidates get the third ply
+      this.deepList = this.cand.filter(function (c) { return c.deep; }).sort(function (x, y) { return y.v - x.v; }).slice(0, 5);
+    }
+    while (this.phase === 2) {
+      if (this.next3 >= this.deepList.length || over(this)) { this.phase = 3; break; }
+      if (now() - t0 >= ms) break;
+      var c3 = this.deepList[this.next3++];
+      this.deepen(c3, -Infinity, true);
+      this.third(c3);
     }
     this.spent += now() - t0;
     this.stats.evals += STATS.evals - e0;
     this.stats.ms = this.spent;
-    return this.phase === 2;
+    return this.phase === 3;
   };
 
   Search.prototype.result = function () {
     var c = this.cand, st = this.st, rand = this.rand;
     if (!c.length) return null;
     var pick;
-    if (st.depth >= 2) {
+    if (st.depth >= 3 && this.deepList.length) {
+      var done = this.deepList.filter(function (x) { return x.v3 !== undefined; });
+      pick = done.length ? done.sort(function (x, y) { return y.v3 - x.v3; })[0] : this.best;
+    } else if (st.depth >= 2) {
       // compare like with like: only deepened moves (the best of them)
       pick = this.best || c[0];
     } else {
@@ -418,11 +476,12 @@
   }
 
   var API = {
-    N: N, RED: RED, BLUE: BLUE, YEL: YEL, PRIMARIES: PRIMARIES, GREY_STEP_MS: GREY_STEP_MS,
-    H_SHORT: H_SHORT, H_LONG: H_LONG,
+    N: N, RED: RED, ORANGE: ORANGE, YEL: YEL, GREEN: GREEN, BLUE: BLUE, MAGENTA: MAGENTA, BROWN: BROWN, BLACK: BLACK,
+    START_COLOURS: START_COLOURS, OWN: OWN, APPS: APPS, PASSES: PASSES,
+    GREY_STEP_MS: GREY_STEP_MS, H_SHORT: H_SHORT, H_LONG: H_LONG,
     idx: idx, colOf: colOf, rowOf: rowOf, isRing: isRing, isCorner: isCorner, inside: inside,
     zoneOwner: zoneOwner, mix: mix, RING: RING, RING_POS: RING_POS, ringPath: ringPath,
-    lineFrom: lineFrom, legalLines: legalLines, applyLine: applyLine,
+    lineFrom: lineFrom, legalCrossings: legalCrossings, applyLine: applyLine,
     region: region, absorb: absorb, connection: connection, W: W, evaluate: evaluate, analyse: analyse,
     Search: Search, choose: choose, STATS: STATS
   };

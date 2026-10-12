@@ -11,132 +11,137 @@
   <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>Colours-MIX : l'algorithme</span></div>
   <div class="article">
     <h1>Colours-MIX : comment fonctionne l'algorithme</h1>
-    <p class="lead">Colours-MIX repose sur trois mécanismes simples qui s'emboîtent : un mélange de couleurs codé sur 3 bits, un globule gris qui se promène au hasard mais seulement sur sa couleur, et un ordinateur (le globule rouge) qui essaie toutes les traversées possibles et note le plateau obtenu selon les « sorties » laissées au globule gris. Tout tient dans <code>game.js</code>, sans moteur séparé.</p>
+    <p class="lead">Colours-MIX repose sur trois mécanismes qui s'emboîtent : un cercle de couleurs sur lequel chaque traversée fait avancer les cases d'un cran, un globule gris qui se promène au hasard mais seulement sur la couleur de sa case, et un ordinateur (le globule rouge) qui essaie toutes les traversées possibles et note le plateau obtenu selon le chemin qui reste à peindre pour le gris. Les règles et les durées ci-dessous ont été mesurées en faisant tourner le programme d'origine (version 2) ; le portage d'origine les reproduit dans <code>game.js</code>, sans moteur séparé.</p>
 
     <h2>Ce que fait l'algorithme</h2>
 
-    <h3>1. Le mélange des couleurs</h3>
-    <p>Le plateau fait <code>N = 16</code> cases de côté : un anneau noir de 60 cases entoure une zone centrale de 14 × 14 = 196 cases. Chaque couleur est un masque de bits des trois primaires : <code>RED = 1</code>, <code>BLUE = 2</code>, <code>YEL = 4</code>. Le violet vaut donc 3, l'orange 5, le vert 6 et le brun 7 ; le noir de l'anneau vaut 0. Au début de chaque manche, <code>newBoard()</code> tire chaque case centrale uniformément parmi les 7 couleurs.</p>
-    <p>Quand un globule traverse, chacune des 14 cases de la ligne passe par la fonction <code>mix</code> :</p>
-<pre><code>function mix(m, a) { var n = m ^ a; return n === 0 ? a : n; }</code></pre>
-    <p>C'est un OU exclusif : appliquer une primaire l'ajoute si elle est absente et la retire si elle est présente (violet + rouge = bleu, brun + jaune = violet). Le seul cas particulier est la couleur pure qui reçoit sa propre couleur : le XOR donnerait 0 (noir), ce qui est interdit au centre, donc la case reste inchangée. Conséquence pratique : traverser deux fois la même ligne avec la même couleur annule presque toujours l'effet, d'où la règle « pas deux fois de suite au même endroit » (<code>p.lastLine</code>).</p>
+    <h3>1. Le plateau et le cercle des couleurs</h3>
+    <p>Le plateau fait <code>N = 13</code> cases de côté : un anneau noir de 48 cases (la « zone noire ») entoure 11 × 11 = 121 cases colorées. Au début de chaque manche, <code>newBoard()</code> tire chaque case centrale uniformément parmi rouge, orange, jaune, vert et magenta (jamais de bleu), sauf le carré 3 × 3 du centre, brun, où part le globule gris. Le rouge part au milieu du haut, le jaune au milieu de la droite, et chacun a une pyramide dans un coin.</p>
+    <p>Les couleurs sont codées sur un cercle : <code>RED = 0, ORANGE = 1, YEL = 2, GREEN = 3, BLUE = 4, MAGENTA = 5</code>, plus <code>BROWN = 6</code> et <code>BLACK = 7</code>. Quand un globule traverse, chacune des 11 cases de la ligne passe par la fonction <code>mix</code> avec sa « couleur d'application » :</p>
+<pre><code>function mix(c, a) {
+  if (c === BROWN || c === a) return a;   // le brun prend la couleur, l'identique ne change pas
+  var d = (a - c + 6) % 6;
+  if (d === 3) return BROWN;              // couleur opposée sur le cercle
+  return d &lt; 3 ? (c + 1) % 6 : (c + 5) % 6;   // un cran vers a, par le plus court chemin
+}</code></pre>
+    <p>Jaune + bleu donne vert, vert + bleu donne bleu, rouge + bleu donne magenta, jaune + rouge donne orange ; vert + rouge, magenta + jaune et orange + bleu donnent du brun. Deux passages de la même couleur rendent donc une ligne entière uniforme : c'est le geste de base du jeu. Le rouge ne dispose que du bleu et du rouge, le jaune du bleu et du jaune (<code>OWN = [RED, YEL]</code>), et les deux recommencent chaque manche en bleu.</p>
 
     <h3>2. La marche aléatoire contrainte du globule gris</h3>
-    <p>Le gris démarre sur l'une des 4 cases du centre (colonnes et lignes 7 ou 8). <code>newBoard()</code> recommence le tirage (jusqu'à 500 fois) tant que la région de sa couleur, calculée par un parcours en largeur dans <code>component()</code>, touche déjà l'anneau ou dépasse 4 cases : la partie commence donc avec un gris enfermé. Ensuite 4 pyramides sont posées entre les lignes et colonnes 2 et 13, à une distance de Manhattan d'au moins 3 du gris, jamais deux sur la même ligne ou la même colonne.</p>
-    <p>À chaque image, <code>updateGrey()</code> applique la règle suivante :</p>
-<pre><code>si le gris est immobile et que son délai est écoulé :
-  options = voisins (4 directions) tels que
-            pas réservés par une traversée en cours,
-            pas occupés par un globule,
-            et (case noire de l'anneau
-                ou (pas de pyramide et même couleur que la case actuelle))
-  si aucune option : réessayer dans 300 ms
-  sinon : aller sur une option tirée uniformément (420 ms de glissement)
-à l'arrivée : pause de 150 à 800 ms (150 + random × 650)
-  si la case est sur l'anneau : manche gagnée par zoneOwner()</code></pre>
-    <p>C'est une marche aléatoire pure, sans mémoire : le gris peut revenir sur ses pas. Les joueurs ne le dirigent jamais directement, ils modifient le graphe sur lequel il marche. <code>zoneOwner()</code> attribue les bandes du haut et du bas au rouge, celles de gauche et de droite au jaune. Pendant une traversée, les cases de la ligne et la case d'arrivée sont mises dans <code>G.reserved</code>, ce qui empêche le gris d'y entrer ; inversement, <code>crossProblem()</code> interdit une ligne qui contient le gris.</p>
+    <p><code>updateGrey()</code> applique à chaque image la règle relevée dans l'original :</p>
+<pre><code>si le gris est arrêté et que sa pause est finie :
+  options = voisins (4 directions) qui ne portent ni pyramide ni globule
+            et qui sont noirs ou de la même couleur que sa case actuelle
+  si aucune option : réessayer dans 200 ms
+  sinon : glisser vers une option tirée au hasard (480 ms)
+à l'arrivée : pause de 0 à 500 ms ;
+  si la case est noire, la manche est finie : haut ou bas pour le rouge,
+  gauche ou droite pour le jaune (zoneOwner())</code></pre>
+    <p>C'est une marche aléatoire pure, sans mémoire. Les joueurs ne dirigent jamais le gris : ils modifient le graphe sur lequel il marche. Une traversée passe par-dessus lui et recolore sa case, ce qui peut le libérer d'un coup.</p>
 
-    <h3>3. L'ordinateur : le globule rouge</h3>
-    <p>En mode un joueur, <code>updateAI()</code> attend 500 ms au début du tour, puis appelle <code>aiChoose()</code> une seule fois, et exécute le plan : marcher sur l'anneau (<code>ringPath()</code>, le plus court des deux sens en évitant l'autre globule), changer de couleur d'application, puis traverser.</p>
-    <p><b>Génération des coups.</b> <code>legalMoves()</code> parcourt les 60 cases de l'anneau. Chaque case hors coin donne une ligne (<code>lineFrom()</code>), refusée si c'est la dernière ligne traversée, si elle contient une pyramide ou le gris, ou si l'arrivée est occupée. Chaque départ est combiné aux 3 couleurs : au plus 56 × 3 = 168 coups. <code>aiChoose()</code> écarte ceux dont le chemin d'accès dépasse <code>maxSteps = (temps restant - 1500 ms) / 130 ms</code>.</p>
-    <p><b>Évaluation.</b> <code>evaluate()</code> fait un parcours en largeur depuis le gris sur les cases de sa couleur (sans pyramide) et regarde les cases noires adjacentes à cette région, les « sorties ». Une sortie vers le haut ou le bas ajoute <code>1 / (1 + d)</code> au score rouge, une sortie à gauche ou à droite au score jaune, où <code>d</code> est la distance du gris à la case de la région qui la touche. Les sorties occupées par un globule ne comptent pas. Le résultat :</p>
-<pre><code>score = (rouge - jaune) × 10 + (minY - minR) × 0.3</code></pre>
-    <p><code>minR</code> et <code>minY</code> sont les plus petites distances entre une case de la région et les bandes rouges ou jaunes : le second terme, faible, départage les positions sans sortie en préférant une région proche du haut ou du bas.</p>
+    <h3>3. Traversées, pyramides et jauge</h3>
+    <ul>
+      <li>Les globules marchent sur toute la zone noire, coins compris, à 300 ms par case (<code>STEP_MS</code>), sans entrer sur une pyramide ni sur l'autre globule.</li>
+      <li>Une traversée (<code>tryCross()</code>) part de n'importe quelle case noire d'un côté, jamais d'un coin, et va tout droit jusqu'au côté opposé, à 300 ms par case (<code>CROSS_MS</code>, 3,6 s en tout). La seule condition (<code>crossProblem()</code>) : la case d'arrivée ne porte ni pyramide ni globule.</li>
+      <li>Au départ, la pyramide précédente du globule disparaît ; à l'arrivée, une pyramide se dresse sur la case de départ (16 images, 1,28 s). C'est ce qui interdit de retraverser la même ligne au tour suivant : l'une de ses extrémités porte la pyramide.</li>
+      <li>La jauge compte 80 pixels. Elle reste pleine pendant que la pyramide se dresse, puis perd un pixel toutes les 240 ms au niveau débutant (19,2 s) ou 120 ms au niveau confirmé (9,6 s) (<code>PX_MS</code>). Elle est figée pendant une traversée. <b>Jauge vide : le globule dont c'est le tour perd la manche</b> (<code>endRound(1 - G.turn)</code>).</li>
+      <li>Le jaune commence la manche 1, le rouge la manche 2. À une manche partout, le plus rapide gagne ; à temps égal, « Partie nulle. ».</li>
+    </ul>
+
+    <h3>4. L'ordinateur du portage : le globule rouge</h3>
+    <p>En mode un joueur, <code>updateAI()</code> attend que la jauge démarre (plus 150 ms), appelle <code>aiChoose()</code> une fois, puis exécute le plan : marcher sur l'anneau (<code>ringPath()</code>, le plus court des deux sens en évitant pyramides et globule), changer de couleur (250 ms) et traverser.</p>
+    <p><b>Génération des coups.</b> <code>legalMoves()</code> parcourt les 48 cases de l'anneau. Chaque case de côté libre dont l'arrivée est libre et que l'on peut atteindre à pied donne une ligne, combinée aux 2 couleurs : au plus 44 × 2 = 88 coups. <code>aiChoose()</code> écarte ceux dont le chemin dépasse <code>maxSteps = (temps restant de la jauge - 1500 ms) / 300 ms</code>, pour toujours traverser à temps.</p>
+    <p><b>Évaluation.</b> <code>evaluate()</code> fait un parcours 0-1 (file à double entrée) depuis la case du gris : passer sur une case de la même couleur coûte 0, sur une autre couleur 1. Il retient le coût le plus faible pour atteindre une case noire du haut ou du bas (rouge) et de gauche ou de droite (jaune), avec 0,6 de plus si cette case porte une pyramide ou un globule.</p>
+<pre><code>score = (coût jaune - coût rouge) × 10
+        + 60 si un chemin est déjà ouvert vers le rouge
+        - 80 si un chemin est déjà ouvert vers le jaune</code></pre>
     <p><b>Recherche selon le niveau.</b></p>
     <ul>
-      <li><b>Débutant</b> (12 s par tour) : profondeur 1. Chaque coup reçoit son score plus un bruit <code>Math.random() × 3</code>, et dans 20 % des cas l'ordinateur prend un coup au hasard parmi les 5 meilleurs.</li>
-      <li><b>Confirmé</b> (8 s par tour) : profondeur 2 (un minimax sur deux demi-coups). Pour chaque coup rouge, toutes les réponses jaunes sont jouées et la pire pour le rouge est retenue ; la valeur est <code>0.45 × s1 + 0.55 × pire</code>. Ce mélange reflète l'incertitude : le gris bouge entre-temps et le joueur ne trouve pas toujours la meilleure réponse. La réflexion s'arrête d'approfondir au bout de 250 ms.</li>
+      <li><b>Débutant</b> : profondeur 1. Chaque coup reçoit son score plus un bruit <code>Math.random() × 6</code>, et dans 25 % des cas l'ordinateur prend un coup au hasard parmi les 4 meilleurs.</li>
+      <li><b>Confirmé</b> : profondeur 2. Pour chaque coup rouge, toutes les réponses jaunes (marche d'au plus 40 cases) sont jouées et la pire pour le rouge est retenue : valeur <code>0.4 × s1 + 0.6 × pire</code>. L'approfondissement s'arrête 300 ms après le début de la réflexion ; les coups suivants gardent alors leur note <code>s1</code>.</li>
     </ul>
-    <p>Dans les deux cas on retire <code>0.01</code> par pas de marche et <code>0.005</code> si la couleur doit changer, pour préférer, à valeur égale, le coup le plus rapide.</p>
+    <p>On retire enfin <code>0.05</code> par pas de marche et <code>0.02</code> si la couleur doit changer. Ce mélange suffit à faire apparaître le style observé dans l'original : peindre en alternance deux lignes voisines de la même couleur jusqu'à ouvrir un couloir vers son camp.</p>
 
     <h3>En chiffres</h3>
     <table>
       <tr><th>Élément</th><th>Valeur</th></tr>
-      <tr><td>Plateau</td><td>16 × 16, centre 14 × 14, anneau de 60 cases, 28 lignes</td></tr>
-      <tr><td>Coups rouges possibles</td><td>au plus 168 (56 départs × 3 couleurs)</td></tr>
-      <tr><td>Évaluations au niveau confirmé</td><td>jusqu'à 168 × 168 ≈ 28 000, coupées à 250 ms</td></tr>
-      <tr><td>Durée d'un tour</td><td>12 s (débutant), 8 s (confirmé)</td></tr>
-      <tr><td>Pas sur l'anneau / en traversée</td><td>110 ms (130 ms pour l'ordinateur) / 75 ms par case</td></tr>
-      <tr><td>Globule gris</td><td>420 ms par pas, puis pause de 150 à 800 ms</td></tr>
-      <tr><td>Obstacles</td><td>4 pyramides</td></tr>
+      <tr><td>Plateau</td><td>13 × 13, centre 11 × 11, anneau de 48 cases dont 44 départs possibles</td></tr>
+      <tr><td>Coups rouges possibles</td><td>au plus 88 (44 départs × 2 couleurs)</td></tr>
+      <tr><td>Jauge</td><td>1,28 s pleine, puis 19,2 s (débutant) ou 9,6 s (confirmé)</td></tr>
+      <tr><td>Marche / traversée</td><td>300 ms par case (traversée complète : 3,6 s)</td></tr>
+      <tr><td>Globule gris</td><td>480 ms par pas, puis pause de 0 à 500 ms</td></tr>
+      <tr><td>Évaluation du portage</td><td>5,8 µs (node, 153 positions de parties simulées)</td></tr>
+      <tr><td>Réflexion au niveau confirmé</td><td>11,7 ms en moyenne sur le fil principal, jusqu'à 160 ms observées en partie simulée</td></tr>
     </table>
 
     <h2>Pourquoi ce choix</h2>
-    <p>Le facteur de branchement est petit (168 coups au plus) et l'évaluation est un simple parcours d'une région de quelques dizaines de cases : une recherche exhaustive à profondeur 1 ou 2 coûte quelques millisecondes à quelques centaines, assez pour tenir dans le fil principal du navigateur sans Web Worker ni outil de build.</p>
-    <p>Aller plus profond aurait peu de sens : le gris est aléatoire, donc l'état du plateau deux tours plus loin est très incertain, et un minimax classique se tromperait avec assurance. Compter les sorties pondérées par la distance est une approximation bon marché de la question qui compte vraiment : « de quel côté le gris a-t-il le plus de chances de s'échapper bientôt ? ».</p>
-    <p>Le codage des couleurs en bits rend le mélange trivial (un XOR) et fidèle aux règles d'origine, qui disent seulement « pratiquez et vous comprendrez la logique ». Enfin, le bruit du niveau débutant garde le jeu amusant : un ordinateur parfait sur ce genre de jeu est frustrant.</p>
-    <p>Les compromis acceptés : l'évaluation ignore les probabilités réelles de la marche aléatoire, ne prévoit pas où sera le gris quand la traversée aura lieu, et la recherche bloque l'animation jusqu'à 250 ms au niveau confirmé.</p>
+    <p>Le facteur de branchement est petit (88 coups au plus) et l'évaluation n'est qu'un parcours de 121 cases : une recherche exhaustive à profondeur 1 ou 2 coûte de quelques millisecondes à quelques dizaines, assez pour rester dans le fil principal du navigateur, sans Web Worker ni outil de build.</p>
+    <p>Aller plus profond aurait peu de sens : le gris est aléatoire, et l'état du plateau deux tours plus loin est très incertain. Le coût « nombre de cases à recolorer » est une approximation bon marché de la question qui compte : « de quel côté le gris pourra-t-il bientôt s'échapper ? ». Il pousse naturellement à peindre de longues lignes de la couleur du gris dans le bon sens, ce que fait aussi l'ordinateur d'origine, dont le raisonnement exact n'est pas lisible dans l'exécutable.</p>
+    <p>Les compromis acceptés : l'évaluation ne connaît pas les vraies probabilités de la marche (une région ouverte d'un seul côté vaut autant qu'une large région ouverte), le coût 1 par case ignore qu'une case peut demander deux passages et que le brun prend la couleur en un seul, la coupure à 300 ms favorise les coups non approfondis, et la recherche bloque l'animation pendant qu'elle tourne.</p>
 
     <h2>Comment l'améliorer</h2>
     <ol>
-      <li><b>Évaluer avec les vraies probabilités de la marche.</b> La marche du gris est une chaîne de Markov dont l'anneau est absorbant. On peut calculer, pour un horizon de H pas (environ 0,9 s par pas, donc une dizaine de pas par tour), la probabilité d'atteindre une bande rouge ou jaune en propageant la distribution de position pas à pas, avec les mêmes règles que <code>greyOptions()</code>. Le score devient « P(rouge) - P(jaune) », bien plus juste que <code>1 / (1 + d)</code>, et il tient compte des culs-de-sac. Effort moyen (une quarantaine de lignes dans <code>evaluate()</code>), coût par évaluation comparable au parcours actuel.</li>
-      <li><b>Élaguer les coups sans effet et corriger la coupure de temps.</b> Une traversée qui ne touche ni la région du gris ni ses voisins ne change pas le score : on peut ne garder qu'un représentant de ces coups, ce qui réduit souvent fortement les 168 candidats. Par ailleurs, quand les 250 ms sont dépassées, les coups suivants gardent la note <code>s1</code> seule, alors que les autres ont été tirés vers le bas par <code>0.55 × pire</code> : ils sont donc favorisés à tort. Mieux vaut évaluer d'abord tous les coups à profondeur 1, les trier, puis approfondir les meilleurs dans l'ordre (approfondissement itératif). Effort faible, dans <code>aiChoose()</code> et <code>legalMoves()</code>.</li>
-      <li><b>Ne plus bloquer l'affichage.</b> Déplacer <code>aiChoose()</code> dans un Web Worker (le plateau est un simple <code>Uint8Array</code>, facile à transmettre) ou découper la boucle sur plusieurs images. Effort moyen, supprime l'à-coup visible au niveau confirmé.</li>
-      <li><b>Anticiper le déplacement du gris.</b> L'ordinateur évalue avec la position actuelle du gris, alors que celui-ci fait plusieurs pas pendant la marche vers le départ (130 ms par case). Partir de la distribution de position prévue au moment de la traversée (même calcul qu'au point 1) rendrait les coups lointains mieux notés. Effort faible une fois le point 1 fait.</li>
-      <li><b>Mieux régler la difficulté.</b> Les poids (10, 0.3, bruit de 3, 20 %, 0.45/0.55) ont été posés à la main. Des parties ordinateur contre ordinateur permettraient de les ajuster, et d'ajouter un troisième niveau. Effort moyen.</li>
-      <li><b>Hasard reproductible pour les tests.</b> Remplacer <code>Math.random()</code> (plateau, gris, ordinateur) par un générateur à graine, exposé via <code>window.ColoursMix</code>, pour rejouer une partie à l'identique. Effort faible.</li>
+      <li><b>Évaluer avec les vraies probabilités de la marche.</b> La marche du gris est une chaîne de Markov dont l'anneau est absorbant. En propageant la distribution de sa position pas à pas, avec les mêmes règles que <code>greyOptions()</code>, on obtient la probabilité qu'il sorte en haut ou en bas, à gauche ou à droite, dans les prochaines secondes. Effort moyen, dans <code>evaluate()</code>.</li>
+      <li><b>Compter les vrais passages.</b> Le nombre de traversées qui transforment une couleur en une autre se calcule une fois pour toutes sur le cercle (de 0 à 3) ; utilisé comme coût de chaque case, en essayant aussi de repeindre la région du gris en rouge, bleu ou jaune, il remplace avantageusement le coût 0 ou 1. Effort faible.</li>
+      <li><b>Corriger la coupure de temps.</b> Noter d'abord tous les coups à profondeur 1, les trier, puis approfondir les meilleurs dans l'ordre et ne comparer que des coups approfondis ; une coupure alpha arrête l'examen des réponses dès qu'un coup ne peut plus battre le meilleur. Effort faible, dans <code>aiChoose()</code>.</li>
+      <li><b>Ne plus bloquer l'affichage.</b> Déplacer la recherche dans un Web Worker (le plateau est un simple <code>Uint8Array</code>), avec repli sur une recherche découpée en tranches. Effort moyen.</li>
+      <li><b>Prévoir sa propre réplique.</b> Une ligne uniforme demande deux passages, et on ne peut pas repasser par la même ligne au tour suivant : regarder un troisième demi-coup (notre réponse à la riposte) aide à préparer ces couloirs. Effort moyen.</li>
+      <li><b>Anticiper le déplacement du gris et régler les poids.</b> Le gris fait plusieurs pas pendant la marche vers le départ ; et les poids (10, 60, 80, 0.4/0.6, bruit de 6) ont été posés à la main. Des parties ordinateur contre ordinateur avec un hasard à graine permettraient de les ajuster. Effort moyen.</li>
     </ol>
-    <div class="callout">Petit nettoyage au passage : le terme <code>(q.length &gt; 1 ? 0 : 0)</code> à la fin de <code>evaluate()</code> vaut toujours 0, et le paramètre <code>k</code> de <code>legalMoves()</code> n'est pas utilisé.</div>
 
     <h2>Dans la nouvelle version</h2>
-    <p>La <a href="nouveau/">nouvelle version</a> garde les règles, les graphismes et les sons d'origine. Les règles et l'ordinateur sont désormais dans <code>nouveau/engine.js</code> (sans DOM), partagé par la page, un Web Worker (<code>nouveau/ai-worker.js</code>) et les scripts de test sous node. Voici ce qui a été réalisé dans la liste ci-dessus, avec des mesures.</p>
+    <p>La <a href="nouveau/">nouvelle version</a> applique exactement les mêmes règles et durées que l'original (plateau 13 × 13, cercle des couleurs, bleu ou couleur propre, une pyramide par globule, traversée depuis tout côté avec arrivée libre, coins praticables, 300 ms par case, gris à 480 ms par pas, jauge de 19,2 s ou 9,6 s après 1,28 s, jauge vide = manche perdue, « Partie nulle. » à temps égal), avec les graphismes et les sons d'origine. Les règles et l'ordinateur sont dans <code>nouveau/engine.js</code> (sans DOM), partagé par la page, un Web Worker (<code>nouveau/ai-worker.js</code>) et les scripts de test sous node. Les mesures ci-dessous viennent d'un simulateur node qui rejoue les parties avec les durées réelles et charge le <code>game.js</code> du portage sans le modifier (pour faire jouer le jaune à l'ordinateur du portage, le plateau est transposé et le rouge échangé avec le jaune, ce qui laisse le mélange inchangé).</p>
 
     <h3>1. Les vraies probabilités de la marche (point 1)</h3>
-    <p><code>absorb()</code> propage la distribution de position du gris pas à pas, avec exactement les règles de <code>greyOptions()</code> : voisin noir libre ou de même couleur sans pyramide, choix uniforme, immobile s'il n'a aucune option. La masse qui atteint l'anneau est comptée du côté rouge ou jaune. Deux horizons sont lus dans la même boucle : 16 pas (environ 14 s) et 40 pas (environ 36 s). Seules les cases qui portent de la masse sont parcourues, et le calcul s'arrête dès que tout est absorbé.</p>
+    <p><code>absorb()</code> propage la distribution de position du gris avec exactement les règles du jeu (voisin noir libre ou de même couleur, choix uniforme, immobile s'il n'a aucune option) et compte la masse qui atteint chaque bande. Deux horizons sont lus dans la même boucle : 16 pas (environ 12 s) et 40 pas (environ 29 s), un pas moyen durant 730 ms.</p>
 <pre><code>score (rouge) = 10 × (P16(rouge) - P16(jaune)) + 3 × (P40(rouge) - P40(jaune))
-              + 0.3 × (coût jaune - coût rouge) + 0.05 × (minY - minR)</code></pre>
-    <p>Vérification : sur 5 plateaux tests, les probabilités exactes coïncident avec 100 000 marches simulées à ±0,05 point (par exemple 1,07 % contre 1,11 %).</p>
-    <p><b>Coût de connexion (nouveau).</b> Les parties simulées ont montré que le gris part toujours enfermé dans une région de 1 à 4 cases, et qu'une région sans sortie donne P = 0 : l'ancienne évaluation n'avait alors que le petit terme <code>minY - minR</code> pour se guider. <code>connection()</code> calcule, par un Dijkstra à seaux, le nombre minimal de « mélanges » (primaires à ajouter ou retirer, de 0 à 3 par case) qu'il reste à faire pour ouvrir un chemin de la couleur du gris jusqu'à une bande rouge, puis jusqu'à une bande jaune, comme une distance au Hex. Sans ce terme, le niveau confirmé ne gagnait aucune manche sur 20 contre un adversaire aléatoire en 5 minutes ; avec, il en gagne 8 sur 20.</p>
+              + 0.4 × (passages jaune - passages rouge) + 0.05 × (minY - minR)</code></pre>
+    <p>Vérification sur 8 positions ouvertes tirées de parties simulées : l'écart avec 100 000 marches simulées ne dépasse pas 0,16 point (par exemple 20,45 % contre 20,30 %).</p>
 
-    <h3>2. Coupure de temps corrigée et élagage (point 2)</h3>
-    <p>Tous les coups sont d'abord notés à profondeur 1, puis triés, puis approfondis dans cet ordre (le meilleur d'abord). Le coup joué est le meilleur parmi les coups <b>approfondis</b> : on ne compare plus une valeur à 2 demi-coups avec une valeur à 1 demi-coup. Comme la valeur approfondie ne dépasse jamais la valeur à profondeur 1, la recherche s'arrête dès que la note à profondeur 1 du coup suivant est inférieure au meilleur coup approfondi, et l'examen des réponses adverses s'arrête dès que le coup ne peut plus battre ce meilleur (coupure).</p>
-    <p>Une traversée qui ne touche ni la région du gris ni ses voisins ne change pas la région : un seul représentant est gardé par case de départ (la couleur actuelle), et sa note ne dépend que de sa case d'arrivée (mémorisée). Même chose pour les réponses adverses.</p>
+    <h3>2. Le coût en passages réels (point 2)</h3>
+    <p><code>PASSES</code> donne, pour chaque couple de couleurs, le nombre minimal de passages de rouge, bleu ou jaune qui transforme l'une en l'autre (le brun devient rouge en 1 passage, l'orange devient bleu en 2 en passant par le brun, le jaune devient magenta en 3). <code>connection()</code> lance un Dijkstra à seaux vers chaque bande pour 4 couleurs cibles possibles (celle du gris, puis rouge, bleu et jaune, la case du gris comptant aussi) et garde le minimum. Au départ, le carré brun ne touche aucune sortie : les probabilités valent 0 et c'est ce coût qui oriente le jeu, comme une distance au Hex.</p>
+
+    <h3>3. Recherche triée, coupure et troisième demi-coup (points 3 et 5)</h3>
+    <p>Tous les coups sont notés à profondeur 1, triés, puis approfondis dans cet ordre ; le coup joué est le meilleur des coups <b>approfondis</b>. Comme la valeur approfondie ne dépasse jamais la note à profondeur 1, la recherche s'arrête dès que la note du coup suivant passe sous le meilleur coup approfondi, et l'examen des réponses s'arrête dès qu'un coup ne peut plus gagner. Les réponses qui touchent la région du gris sont examinées d'abord. Au niveau expert, les 5 meilleurs coups reçoivent un troisième demi-coup : pour leurs 3 ripostes les plus dangereuses, notre meilleure réplique est cherchée, et la valeur devient <code>0.45 × s1 + 0.55 × pire(0.5 × riposte + 0.5 × réplique)</code>.</p>
     <table>
-      <tr><th>Mesure (node, 60 positions)</th><th>Version d'origine</th><th>Nouvelle version</th></tr>
-      <tr><td>Recherche complète à profondeur 2</td><td>140 ms, environ 11 900 évaluations</td><td>10,9 ms, 269 évaluations</td></tr>
-      <tr><td>Sans l'élagage des traversées sans effet</td><td>-</td><td>16,7 ms, 486 évaluations</td></tr>
-      <tr><td>Coût d'une évaluation</td><td>15 µs (1/(1+d))</td><td>48 µs (absorption sur 40 pas)</td></tr>
+      <tr><th>Mesure (node, 76 positions du rouge)</th><th>Temps moyen</th><th>Maximum</th><th>Évaluations</th></tr>
+      <tr><td>Portage, confirmé (profondeur 2)</td><td>11,7 ms</td><td>23 ms</td><td>jusqu'à 88 × 88</td></tr>
+      <tr><td>Nouvelle, profondeur 1</td><td>0,6 ms</td><td>4 ms</td><td>39</td></tr>
+      <tr><td>Nouvelle, profondeur 2 avec coupure</td><td>2,9 ms</td><td>18 ms</td><td>163</td></tr>
+      <tr><td>Nouvelle, profondeur 3 (expert)</td><td>11,2 ms</td><td>37 ms</td><td>761</td></tr>
     </table>
-    <p><b>Effet de la coupure</b> (150 positions, appareil lent simulé : le budget de 250 ms s'épuise après K coups approfondis) :</p>
-    <table>
-      <tr><th></th><th>Origine : coup joué non approfondi</th><th>Origine : coup différent de la recherche complète</th><th>Nouvelle : coup différent de la recherche complète</th></tr>
-      <tr><td>K = 10</td><td>99 %</td><td>43 %</td><td>12 %</td></tr>
-      <tr><td>K = 40</td><td>93 %</td><td>49 %</td><td>1 %</td></tr>
-    </table>
-    <p>Dès que la coupure intervient, l'ancienne version joue presque toujours un coup jamais approfondi, donc favorisé à tort ; la nouvelle joue presque toujours le coup de la recherche complète (perte moyenne relative 0,009 contre 0,112 à K = 10).</p>
+    <p>Une évaluation coûte 13,6 µs contre 5,8 µs dans le portage (absorption sur 40 pas et 4 parcours de coût), mais la coupure en fait examiner bien moins.</p>
 
-    <h3>3. Plus de blocage de l'affichage (point 3)</h3>
-    <p>La recherche tourne dans un Web Worker (<code>importScripts('engine.js')</code>). Si <code>new Worker()</code> échoue (fichier ouvert en <code>file://</code>, navigateur ancien) ou ne répond pas en 4 s, la même recherche reprend sur le fil principal, découpée en tranches de 6 ms (<code>Search.step()</code> est reprenable). Mesure dans Chromium avec le Worker désactivé : 721 images en 12 s pendant que l'ordinateur jouait, soit 60 images par seconde.</p>
+    <h3>4. Plus de blocage de l'affichage (point 4)</h3>
+    <p>La recherche tourne dans un Web Worker (<code>importScripts('engine.js')</code>). Si <code>new Worker()</code> échoue (fichier ouvert en <code>file://</code>, navigateur ancien) ou ne répond pas en 4 s, la même recherche reprend sur le fil principal, découpée en tranches de 6 ms (<code>Search.step()</code> est reprenable). Mesure dans Chromium avec le Worker désactivé, au niveau expert : 61 images par seconde pendant que l'ordinateur jouait.</p>
 
-    <h3>4. Trois niveaux distincts (point 5)</h3>
+    <h3>5. Niveaux</h3>
     <ul>
-      <li><b>Débutant</b> : 12 s par tour, profondeur 1, bruit de 2,5 et 20 % de coups pris parmi les 5 meilleurs.</li>
-      <li><b>Confirmé</b> : 10 s par tour, profondeur 1 exacte, sans bruit.</li>
-      <li><b>Expert</b> : 8 s par tour, profondeur 2 (0,45 × s1 + 0,55 × pire réponse), 300 ms de budget dans le Worker (en pratique 3 à 5 ms suffisent).</li>
+      <li><b>Débutant</b> : jauge de 19,2 s comme le niveau débutant de l'original ; profondeur 1, bruit de 2 et 20 % de coups pris parmi les 5 meilleurs.</li>
+      <li><b>Confirmé</b> : jauge de 9,6 s comme le niveau confirmé de l'original ; profondeur 2 (<code>0.45 × s1 + 0.55 × pire réponse</code>), 250 ms de budget (3 à 5 ms suffisent en moyenne).</li>
+      <li><b>Expert</b> : même jauge de 9,6 s ; profondeur 3 décrite ci-dessus, 800 ms de budget (10 à 20 ms en moyenne).</li>
     </ul>
 
     <h3>Matchs ordinateur contre ordinateur</h3>
-    <p>Un simulateur node reproduit le déroulement réel (marche à 130 ms par case, traversée à 75 ms par case, pas du gris de 420 ms puis pause de 150 à 800 ms, tours de 8 s, coupure de temps de l'ancienne version appliquée telle quelle) et charge l'ancien <code>game.js</code> sans le modifier. Chaque plateau est joué 4 fois (chaque IA de chaque côté, chacun commençant). Une manche sans sortie au bout de 5 minutes est déclarée nulle.</p>
-    <p>Sur les plateaux de départ normaux, deux ordinateurs se neutralisent presque toujours (le gris enfermé ne sort pas en 5 minutes), d'où des « positions ouvertes » : la région du gris (au moins 6 cases) touche déjà les deux côtés, ce qui teste la qualité tactique de l'évaluation.</p>
+    <p>Chaque plateau de départ est joué 4 fois (chaque ordinateur de chaque côté, chacun commençant), avec la jauge du niveau indiqué ; la jauge vide fait perdre la manche, comme dans le jeu. Aucune manche n'a été perdue au temps.</p>
     <table>
-      <tr><th>Positions ouvertes (100 manches)</th><th>Victoires</th><th>Nulles</th></tr>
-      <tr><td>Nouveau confirmé contre ancien débutant</td><td>57 - 8</td><td>35</td></tr>
-      <tr><td>Nouvel expert contre ancien confirmé</td><td>11 - 4</td><td>85</td></tr>
-      <tr><td>Nouveau confirmé contre ancien confirmé (profondeur 2)</td><td>8 - 9</td><td>83</td></tr>
-      <tr><td>Nouveau débutant contre ancien débutant</td><td>26 - 14</td><td>60</td></tr>
-      <tr><td>Nouvel expert contre nouveau confirmé</td><td>34 - 5</td><td>61</td></tr>
-      <tr><td>Nouveau confirmé contre nouveau débutant</td><td>57 - 1</td><td>42</td></tr>
+      <tr><th>Match (manches)</th><th>Victoires</th><th>Nulles (10 min)</th></tr>
+      <tr><td>Nouveau confirmé contre portage confirmé (300)</td><td>167 - 133</td><td>0</td></tr>
+      <tr><td>Nouvel expert contre portage confirmé (300)</td><td>165 - 135</td><td>0</td></tr>
+      <tr><td>Nouvel expert contre nouveau confirmé (400)</td><td>216 - 180</td><td>4</td></tr>
+      <tr><td>Nouvel expert contre nouveau débutant (100)</td><td>85 - 15</td><td>0</td></tr>
+      <tr><td>Nouveau confirmé contre nouveau débutant (100)</td><td>79 - 21</td><td>0</td></tr>
+      <tr><td>Nouveau débutant contre portage débutant (200, jauge de 19,2 s)</td><td>97 - 101</td><td>2</td></tr>
     </table>
-    <p>Contre un adversaire qui joue au hasard sur des plateaux normaux (manches gagnées en moins de 5 minutes) : ancien débutant 2/40, nouveau débutant 1/40, nouveau confirmé 28/120, nouvel expert 22/120, ancien confirmé 24/120. Face à un joueur imprécis, l'expert n'est donc pas plus rapide que l'ancien confirmé (la profondeur 2 joue prudemment), mais il le bat en face à face et réfléchit 10 à 18 fois moins longtemps (3 à 4 ms par tour contre 40 à 65 ms en moyenne).</p>
+    <p>Le hasard du gris pèse lourd : même un ordinateur qui joue au hasard gagne quelques manches. Les écarts restent nets entre les niveaux, et le nouveau confirmé bat le confirmé du portage (55,7 %) en réfléchissant 3 à 5 fois moins longtemps. L'expert n'apporte qu'un petit gain sur le confirmé (54,5 %) : le troisième demi-coup sert surtout à préparer les doubles passages. Le débutant est volontairement au niveau du débutant du portage.</p>
 
     <h3>Côté joueur</h3>
     <ul>
-      <li><b>Aperçu de la traversée</b> : sur la case de départ (ou en survolant une case noire), chaque case de la ligne montre en petit sa future couleur ; une ligne interdite est grisée, barrée et la raison est affichée.</li>
-      <li><b>Aide sur le gris</b> (option, touche <kbd>V</kbd>) : région éclaircie, pourcentage de sortie sur chaque case de l'anneau, chances rouge / jaune, effet de la traversée prévue (« vous +12 pts ») et coût de connexion de chaque camp, tous calculés avec le même moteur que l'ordinateur.</li>
+      <li><b>Aperçu de la traversée</b> : sur la case de départ (ou en survolant une case noire), chaque case de la ligne montre en petit sa future couleur, calculée avec le vrai mélange ; une traversée interdite est grisée et la case fautive barrée (arrivée occupée, coin, chemin bloqué).</li>
+      <li><b>Aide sur le gris</b> (option, touche <kbd>V</kbd>) : région éclaircie, pourcentage de sortie sur chaque case de l'anneau, chances rouge / jaune, effet de la traversée prévue (« vous +12 pts », passages manquants) et passages de couleur manquants de chaque camp, calculés par le même moteur que l'ordinateur.</li>
       <li><b>Indice</b> (touche <kbd>H</kbd>) : la recherche experte propose une case et une couleur.</li>
-      <li>Jauge de tour lisible (barre et secondes, rouge sous 30 %), carte de légende des mélanges, journal des traversées, records par niveau, pause (<kbd>P</kbd>, automatique quand l'onglet est caché), commandes tactiles (↺ ↻ Couleur Traverser) et traversée mémorisée quand on touche deux fois la même case.</li>
+      <li>Jauge du tour lisible (barre et secondes, rouge sous 30 %), voyants de couleur sur les murs comme dans l'original, légende du cercle des couleurs dessinée avec les cases d'origine, journal des traversées, records par niveau (dont les parties nulles), pause (<kbd>P</kbd>, automatique quand l'onglet est caché), marche continue en tenant une touche, commandes tactiles (↺ ↻ Couleur Traverser) et traversée mémorisée quand on touche deux fois la même case.</li>
     </ul>
-    <p><b>Pas encore fait</b> : anticiper le déplacement du gris pendant la marche vers la case de départ (point 4) et le hasard à graine pour rejouer une partie (point 6) ; le simulateur de test utilise toutefois déjà un générateur à graine.</p>
+    <p><b>Pas encore fait</b> : anticiper le déplacement du gris pendant la marche vers la case de départ, et le hasard à graine dans le jeu lui-même (le simulateur de test en utilise déjà un).</p>
 
     <div class="nav"><a href="nouveau/">▶ Jouer à la nouvelle version</a><a href="./">Version d'origine</a><a href="../index.html">◀ Retour à l'accueil</a></div>
   </div>
