@@ -16,6 +16,23 @@ Every game was shipped as a `.zip` archive. The archives are kept at the root of
 
 > Note: the archive `coloursmix.zip` extracts to a folder named `colorsmix/` (without the "u"). That is how the original archive was built.
 
+## Play in the browser
+
+All seven games have been rewritten in plain HTML5/JavaScript in [`docs/`](docs/), using the original graphics, sounds and music extracted from the archives. There is no build step: the files are served as they are.
+
+- **Online (GitHub Pages)**: in the repository on GitHub, open **Settings > Pages**, set **Source** to "Deploy from a branch", pick the branch and the **`/docs`** folder, then save. The games are then at `https://kados.github.io/LehcimGames/`.
+- **Locally**: run `python3 -m http.server -d docs` and open `http://localhost:8000`. (Opening the HTML files directly from disk also works, but sprite transparency needs a web server.)
+
+| Folder | Content |
+|---|---|
+| `docs/index.html` | Launcher listing the 7 games |
+| `docs/common/` | Shared helpers (`lehcim.js`: sprites with colour key, sounds, a small MIDI player, dialogs, high scores) and the Windows 3.1 style CSS |
+| `docs/<game>/` | One game: `index.html`, `game.js` (and `engine.js` / `rules.js` for the rules and computer player), `assets/` with the decoded original sprite sheets and sounds |
+| `docs/thumbs/` | Launcher thumbnails |
+| `tools/` | Python scripts that decode the original formats (`.LIO` banks, NE executable resources, FCOD images, embedded text). `sh tools/extract_all.sh OUTDIR` regenerates everything |
+
+These are rewrites, not emulation: no source code was available, so the gameplay was rebuilt from the original in-game rules. Where the rules were silent (board layouts, timings, scoring details, which sound plays when), choices were made and are noted in each game's "Règles" dialog. Computer opponents, levels, 1/2 player modes and high scores (saved in the browser) are kept where the original had them.
+
 ## Technical context
 
 - **Platform**: all executables are 16-bit **Windows 3.x "NE" (New Executable)** programs, built with **Borland Pascal / Delphi 1** (Borland runtime strings are embedded). They do **not** run natively on 64-bit Windows; use an emulator such as **DOSBox-X with Windows 3.1**, **Windows 98 in a VM**, or **otvdm/winevdm** (a 16-bit Windows compatibility layer for modern Windows).
