@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#c2410c">
+<title>Agora (nouvelle version) - LehcimGames</title>
+<link rel="stylesheet" href="../../common/nouveau.css">
+<style>
+  .nv-stage canvas { image-rendering: auto; cursor: pointer; }
+  .nv-stage.grab canvas { cursor: grabbing; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btnrow .btn { flex: 1 1 auto; }
+  .seg.full { display: flex; width: 100%; }
+  .seg.full button { flex: 1; padding: 6px 4px; }
+  @media (max-width: 420px) { .nv-top .badge { display: none; } .nv-top #new { padding: 0 10px; } }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--ink-2); margin-top: 8px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 2px solid; vertical-align: -2px; margin-right: 4px; }
+  .lg-move { border-color: #3fbf4f !important; }
+  .lg-cap { border-color: #ff7a45 !important; }
+  .lg-pri { border-color: #5aa8ff !important; }
+  .score .p .d { font-size: 13px; color: var(--ink-2); line-height: 1.35; }
+  .score .p .v small { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+  .score .p .sw { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--line); }
+  .sw.w { background: #f2dcc0; } .sw.b { background: #6b3b1c; }
+  .status .dots::after { content: ''; animation: dots 1.2s steps(4) infinite; }
+  @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hist { max-height: 220px; overflow: auto; margin: 0; padding: 0; list-style: none; font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; display: grid; grid-template-columns: auto 1fr 1fr; gap: 0 10px; }
+  .hist li { display: contents; }
+  .hist .n { color: var(--ink-2); text-align: right; }
+  .hist .mv.last { color: var(--accent); font-weight: 700; }
+  .empty { color: var(--ink-2); font-size: 14px; }
+  .view-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+  .view-grid .btn { width: auto; }
+  .overlay .btnrow { justify-content: center; }
+  .overlay .btnrow .btn { flex: 0 0 auto; }
+  .overlay .stats { display: grid; grid-template-columns: auto auto; gap: 2px 16px; font-size: 15px; text-align: left; color: #e8e4dc; }
+  .overlay .stats dd { margin: 0; font-weight: 700; color: #fff; text-align: right; }
+  .overlay .big { font-size: 15px; color: #cfc9be; }
+  .overlay .btn:not(.primary) { background: rgba(255,255,255,.12); color: #fff; border-color: rgba(255,255,255,.3); }
+  .card .sub + .btnrow, .card .seg + .btnrow { margin-top: 10px; }
+  .choice { position: absolute; z-index: 3; display: flex; gap: 6px; background: var(--surface); color: var(--ink); padding: 6px; border-radius: 12px; box-shadow: var(--shadow); transform: translate(-50%, -110%); }
+  .choice[hidden] { display: none; }
+  .choice .btn { min-height: 36px; padding: 0 10px; font-size: 14px; }
+  @media (max-width: 900px) { .hist { max-height: 160px; } }
+</style>
+</head>
+<body>
+<header class="nv-top">
+  <a class="back" href="../../index.html#agora">← <span>Accueil</span></a>
+  <h1>Agora</h1>
+  <span class="badge">Nouvelle version</span>
+  <span class="grow"></span>
+  <div class="actions">
+    <button class="btn primary" id="new">Nouvelle partie</button>
+    <button class="btn icon ghost" data-help title="Règles" aria-label="Règles">?</button>
+    <button class="btn icon ghost" id="settingsBtn" title="Réglages" aria-label="Réglages">⚙</button>
+    <button class="btn icon ghost" id="mute" title="Son" aria-label="Couper le son" aria-pressed="false">🔊</button>
+  </div>
+</header>
+
+<main class="nv-main">
+  <div>
+    <div class="nv-stage" id="stage">
+      <canvas id="game" width="640" height="420" aria-label="Plateau d'Agora en 3D. Clavier : flèches pour choisir une case, Entrée pour jouer." tabindex="0"></canvas>
+      <div class="choice" id="choice" hidden>
+        <button class="btn primary" id="chCap">Prendre</button>
+        <button class="btn" id="chPri">Prisonnier</button>
+      </div>
+      <div class="overlay" id="overlay" hidden></div>
+    </div>
+  </div>
+  <aside class="nv-side">
+    <section class="card" aria-live="polite"><div class="status" id="status">Chargement...</div><div class="sub" id="substatus"></div></section>
+
+    <section class="card" id="playCard">
+      <h2>Ton coup</h2>
+      <div class="seg full" role="group" aria-label="Sorte de coup">
+        <button id="modeMove" aria-pressed="true" title="Déplacement simple ou prise">Déplacer</button>
+        <button id="modePrison" aria-pressed="false" title="Se glisser sous une pile adverse (touche P ou clic droit)">Prisonnier</button>
+      </div>
+      <div class="legend"><span><i class="lg-move"></i>déplacement</span><span><i class="lg-cap"></i>prise</span><span><i class="lg-pri"></i>prisonnier</span></div>
+      <div class="btnrow" style="margin-top:10px">
+        <button class="btn" id="undo" title="Annuler le dernier coup (U)">↶ Annuler</button>
+        <button class="btn" id="hint" title="Demander un indice à l'ordinateur (H)">💡 Indice</button>
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn ghost" id="resign">Abandonner</button>
+        <button class="btn ghost" id="setup" title="Poser soi-même les 16 pièces">Nouvelle position</button>
+      </div>
+    </section>
+
+    <section class="card" id="setupCard" hidden>
+      <h2>Nouvelle position</h2>
+      <p class="sub" style="margin:0 0 8px">Pose les 16 pièces : touche une case pour y ajouter une pièce (clic droit : pièce noire).</p>
+      <div class="seg full" role="group" aria-label="Couleur de la pièce à poser">
+        <button id="setW" aria-pressed="true">Pièce blanche</button>
+        <button id="setB" aria-pressed="false">Pièce noire</button>
+      </div>
+      <div class="btnrow" style="margin-top:10px"><button class="btn" id="setupCancel">Abandonner la pose</button></div>
+    </section>
+
+    <section class="card">
+      <h2>Pièces</h2>
+      <div class="score">
+        <div class="p" id="pW"><div class="n"><span class="sw w"></span><span id="nameW">Blancs</span></div><div class="v" id="freeW">8</div><div class="d" id="detW"></div></div>
+        <div class="p" id="pB"><div class="n"><span class="sw b"></span><span id="nameB">Noirs</span></div><div class="v" id="freeB">8</div><div class="d" id="detB"></div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Vue</h2>
+      <div class="view-grid">
+        <button class="btn" id="rotL" title="Tourner à gauche (Maj + ←)" aria-label="Tourner à gauche">⟲</button>
+        <button class="btn" id="rotR" title="Tourner à droite (Maj + →)" aria-label="Tourner à droite">⟳</button>
+        <button class="btn" id="tiltU" title="Se pencher (Maj + ↑)" aria-label="Se pencher par-dessus">▲</button>
+        <button class="btn" id="tiltD" title="Se redresser (Maj + ↓)" aria-label="Se redresser">▼</button>
+      </div>
+      <div class="seg full" role="group" aria-label="Vues prédéfinies">
+        <button id="vFront" title="Vue d'origine (V)">Origine</button>
+        <button id="vTop">Dessus</button>
+        <button id="vSide">Côté</button>
+        <button id="vOpp">En face</button>
+      </div>
+      <p class="sub" style="margin:8px 0 0">Astuce : fais glisser le fond étoilé pour tourner autour du plateau.</p>
+    </section>
+
+    <section class="card">
+      <h2>Coups joués</h2>
+      <ol class="hist" id="hist"></ol>
+      <div class="empty" id="histEmpty">Aucun coup pour l'instant.</div>
+    </section>
+
+    <section class="card">
+      <h2>Bilan contre l'ordinateur</h2>
+      <dl class="rows" id="record"></dl>
+    </section>
+  </aside>
+</main>
+
+<footer class="nv-foot">
+  <a href="../">Version d'origine</a>
+  <a href="../algorithme.html">L'algorithme</a>
+  <a href="../../index.html">Tous les jeux</a>
+</footer>
+
+<dialog id="help"><div class="d-head"><h2>Règles du jeu</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <h3>But du jeu</h3>
+    <p>Un joueur gagne quand son adversaire ne peut plus jouer, c'est-à-dire quand ce dernier n'a plus de pion ou que ses pions sont tous prisonniers.</p>
+    <h3>Déroulement de la partie</h3>
+    <p>Les blancs commencent. Chaque joueur à tour de rôle doit mouvoir un de ses pions. Dans une pile, seul le pion supérieur peut bouger. Tous les déplacements se font d'une case sur une case adjacente (8 directions).</p>
+    <p><b>Le déplacement simple :</b> le pion est déplacé sur une case vide adjacente.</p>
+    <p><b>La prise :</b> ta pile est plus haute ou de même hauteur que la pile adverse. Ton pion se pose dessus et toutes les pièces adverses sont retournées. La prise n'est jamais obligatoire.</p>
+    <p><b>Le prisonnier :</b> ta pile est plus basse ou de même hauteur. Ton pion se glisse, sans être retourné, sous les pièces adverses.</p>
+    <p>Si tes prisonniers deviennent majoritaires dans une pile, les pièces adverses sont retournées : <b>c'est la révolution !</b> Attention, si tu quittes une pile, tes prisonniers peuvent devenir majoritaires et ce sont alors tes pions qui sont retournés.</p>
+    <h3>Mouvements interdits</h3>
+    <p>Il est interdit de s'empiler sur ses propres pions, sauf pour un <b>pion isolé</b> (qui ne touche qu'un seul pion de sa couleur) : il peut s'empiler sur le pion qu'il touche. Un prisonnier ne peut ni bouger ni être pris par les pièces qui le contrôlent.</p>
+    <p>La partie est nulle si la même position revient trois fois ou après 400 coups.</p>
+    <h3>Comment jouer</h3>
+    <p>Touche (ou clique) une de tes pièces : les cases possibles s'allument en <b style="color:#2f9f3f">vert</b> (déplacement), <b style="color:#e8602a">orange</b> (prise) ou <b style="color:#3d8ee8">bleu</b> (prisonnier). Touche ensuite la case visée, ou fais glisser la pièce. Contre une pile de même hauteur, les deux coups sont possibles : choisis « Prendre » ou « Prisonnier » dans la bulle, ou active le mode <b>Prisonnier</b> (clic droit, ou touche <kbd>P</kbd>).</p>
+    <p><b>Notation :</b> colonnes A à F, rangées 1 à 6 (affichées sur le plateau). <code>B1-C2</code> déplacement, <code>B1+C2</code> empilement d'un pion isolé, <code>B1xC2</code> prise, <code>B1vC2</code> prisonnier, « ! » révolution.</p>
+    <h3>Clavier</h3>
+    <div class="keys">
+      <span><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd></span><span>choisir une case</span>
+      <span><kbd>Entrée</kbd> <kbd>Espace</kbd></span><span>prendre la pièce / jouer sur la case</span>
+      <span><kbd>P</kbd></span><span>mode prisonnier</span>
+      <span><kbd>Échap</kbd></span><span>annuler la sélection</span>
+      <span><kbd>U</kbd></span><span>annuler le dernier coup</span>
+      <span><kbd>H</kbd></span><span>indice</span>
+      <span><kbd>Maj</kbd> + flèches</span><span>tourner, se pencher</span>
+      <span><kbd>V</kbd></span><span>vue d'origine</span>
+      <span><kbd>N</kbd></span><span>nouvelle partie</span>
+    </div>
+    <h3>A propos</h3>
+    <p><b>AGORA</b> - Version 2. Concepteur : Lehcim Noil. <i>Ce jeu est édité avec plateau et pièces en hêtre rose et tilleul par la société STRATE J, Paris.</i> Nouvelle version web avec les textures et sons d'origine.</p>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">J'ai compris</button></div></dialog>
+
+<dialog id="settings"><div class="d-head"><h2>Réglages</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <div class="field"><span class="label">Niveau de l'ordinateur</span>
+      <div class="seg" role="group" aria-label="Niveau" id="levelSeg">
+        <button data-v="1">1 - Débutant</button><button data-v="2">2 - Moyen</button><button data-v="3">3 - Fort</button>
+      </div></div>
+    <div class="field"><span class="label">Qui commence (celui qui commence a les blancs)</span>
+      <div class="seg" role="group" aria-label="Qui commence" id="starterSeg">
+        <button data-v="human">Moi</button><button data-v="cpu">L'ordinateur</button>
+      </div></div>
+    <div class="field"><span class="label">Vitesse des animations</span>
+      <div class="seg" role="group" aria-label="Vitesse des animations" id="speedSeg">
+        <button data-v="slow">Lente</button><button data-v="normal">Normale</button><button data-v="fast">Rapide</button>
+      </div></div>
+    <label class="switch">Coordonnées sur le plateau (A1 à F6)<input type="checkbox" id="optCoords"></label>
+    <label class="switch">Montrer les cases possibles<input type="checkbox" id="optTargets"></label>
+    <label class="switch">Montrer l'analyse de l'ordinateur<input type="checkbox" id="optInfo"></label>
+    <p class="sub">Le niveau change tout de suite ; « qui commence » s'applique à la prochaine partie.</p>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="../../common/lehcim.js"></script>
+<script src="engine.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

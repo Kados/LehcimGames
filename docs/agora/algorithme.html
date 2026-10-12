@@ -77,7 +77,36 @@
     </ol>
     <div class="callout">En résumé : un alpha-bêta propre et rapide sur une représentation très compacte. Les gains les plus rentables sont la table de transposition, le passage en Web Worker et un meilleur traitement des prises en fin de recherche.</div>
 
-    <div class="nav"><a href="./">▶ Jouer à Agora</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+    <h2>Dans la nouvelle version</h2>
+    <p>La <a href="nouveau/">nouvelle version</a> garde exactement les mêmes règles, le même plateau en bois et les mêmes sons, mais son joueur artificiel (<code>nouveau/engine.js</code>) reprend cinq des six pistes ci-dessus. Le générateur de coups et la fonction d'évaluation (mêmes termes, mêmes poids) ont été vérifiés identiques à ceux d'origine sur plus de 130 000 positions tirées de parties aléatoires.</p>
+    <ul>
+      <li><b>Web Worker.</b> La recherche tourne dans <code>nouveau/ai-worker.js</code>, qui charge le moteur avec <code>importScripts</code> et garde sa table de transposition d'un coup à l'autre. La page reste fluide (caméra, animations, boutons) et le niveau 3 dispose maintenant de 2 secondes au lieu de 0,9. Si le worker ne peut pas être créé (page ouverte depuis le disque, <code>file://</code>) ou tombe en erreur, le calcul se fait sur la page avec les anciennes limites de temps, après une courte pause qui laisse s'afficher « L'ordinateur réfléchit ».</li>
+      <li><b>Table de transposition et hachage de Zobrist.</b> Deux clés de 32 bits par (case, couleur, top, bot), mises à jour par <code>play()</code> en ne touchant que les deux cases du coup ; la table (2<sup>20</sup> entrées) mémorise profondeur, score, borne et meilleur coup.</li>
+      <li><b>Ordre des coups et quiescence.</b> Coup de la table d'abord, puis prises et coups prisonnier qui déclenchent une révolution (les plus hautes piles d'abord), deux coups « killer » par profondeur, puis l'heuristique d'historique. Les coups suivants le premier sont essayés avec une fenêtre nulle (PVS). Aux feuilles, une recherche de quiescence continue sur les prises et les révolutions (8 demi-coups au plus) : l'horizon ne coupe plus une prise en deux.</li>
+      <li><b>Evaluation moins coûteuse.</b> La liste de coups déjà générée à la feuille sert de mobilité pour le camp au trait et celle de l'adversaire est comptée sans construire de tableau : on passe de trois générations de coups par feuille à une génération et un comptage. Coups joués et annulés sans aucune allocation.</li>
+      <li><b>Règle de nulle connue de la recherche.</b> La page envoie l'historique des positions (clés de Zobrist) et le nombre de coups joués : une position déjà vue dans la partie ou plus haut dans la variante vaut 0, de même que toute ligne qui atteint 400 coups. L'ordinateur qui gagne ne tourne plus en rond, celui qui perd cherche la répétition.</li>
+    </ul>
+    <h3>Mesures (Node, mêmes 20 positions tirées de parties aléatoires)</h3>
+    <table>
+      <tr><th>Mesure</th><th>Version d'origine</th><th>Nouvelle version</th></tr>
+      <tr><td>Profondeur atteinte en 300 ms</td><td>5,2</td><td>6,0 (+ quiescence)</td></tr>
+      <tr><td>Profondeur atteinte en 900 ms</td><td>6,2</td><td>7,2 (+ quiescence)</td></tr>
+      <tr><td>Niveau 3 réel (0,9 s / 2 s dans le worker)</td><td>6,2</td><td>7,7, variantes jusqu'à 16 demi-coups</td></tr>
+      <tr><td>Vitesse (positions par seconde, 900 ms)</td><td>620 000</td><td>940 000</td></tr>
+      <tr><td>Profondeur fixe 5 sans quiescence : positions / temps</td><td>1 030 000 / 2,46 s</td><td>680 000 / 1,29 s</td></tr>
+      <tr><td>Blocage de la page pendant que l'ordinateur réfléchit</td><td>jusqu'à 0,9 s</td><td>aucun avec le worker ; sans worker, 0,9 s au plus (0,58 s mesuré au niveau 3)</td></tr>
+    </table>
+    <p><b>Matchs contre l'ancien joueur</b> (4 premiers demi-coups tirés au hasard, couleurs alternées, règles de nulle appliquées) :</p>
+    <table>
+      <tr><th>Conditions</th><th>Victoires</th><th>Nulles</th><th>Défaites</th></tr>
+      <tr><td>Même temps : 200 ms par coup, 48 parties</td><td>28</td><td>20</td><td>0</td></tr>
+      <tr><td>Même temps : 900 ms par coup, 8 parties</td><td>4</td><td>4</td><td>0</td></tr>
+      <tr><td>Niveau 2 contre niveau 2 (réglages de chaque version), 24 parties</td><td>17</td><td>7</td><td>0</td></tr>
+    </table>
+    <p>Les niveaux restent distincts : le niveau 1 garde la profondeur 2 sans quiescence et tire au hasard parmi les coups à 12 points du meilleur ; le niveau 2 cherche 4 demi-coups plus la quiescence en 0,5 s ; le niveau 3 approfondit tant qu'il a du temps (2 s). Seule piste non suivie : le réglage automatique des poids par auto-jeu, laissé pour garder le style de jeu d'origine.</p>
+    <p>Côté interface : cases possibles colorées selon la sorte de coup (déplacement, prise, prisonnier) et bulle de choix quand une prise et un coup prisonnier visent la même pile, mode « Prisonnier » bien visible pour les écrans tactiles, annulation, indice calculé par l'ordinateur, historique des coups noté de A1 à F6 (coordonnées affichées sur le plateau), vues prédéfinies et rotation en faisant glisser le fond, compteurs de pièces dans le panneau, jeu au clavier, résumé de fin de partie et bilan par niveau.</p>
+
+    <div class="nav"><a href="nouveau/">▶ Jouer à la nouvelle version</a><a href="./">Version d'origine</a><a href="../index.html">◀ Retour à l'accueil</a></div>
   </div>
 </div>
 </body>
