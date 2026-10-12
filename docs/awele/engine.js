@@ -1,176 +1,184 @@
 /*
- * Awélé - rules engine and computer player (no drawing, no DOM).
+ * Awélé - rules engine and computer player (no drawing, no DOM), as in AWELE.EXE.
  * Plain script: defines the global AweleEngine (also exported for node tests).
  *
- * Board: 12 pits, sowing goes counter-clockwise = increasing index.
+ * Board: 12 pits, sowing goes counter-clockwise = increasing index (same numbering as the original).
  *   0..5  : player's pits A B C D E F (bottom row, left to right)
  *   6..11 : computer's pits a b c d e f (top row, RIGHT to left)
  * s[0] = seeds won by the player (right store), s[1] = by the computer (left store).
  * turn: 0 = player, 1 = computer.
- * tournament: false = "Règles usuelles", true = "Règles de tournoi".
+ * mode: 0 = "Règles usuelles", 1 = "Règles de tournoi".
+ *
+ * Everything below was read in the original program (16-bit code of AWELE.EXE) and checked
+ * against games played with it: same move evaluation, same legality test, same end rules,
+ * same search (depth 1, 3, 5, 7, 9 for levels 1 to 5, with the same pruning and tie order).
  */
 (function (root) {
   'use strict';
 
   var LETTERS = 'ABCDEFabcdef';
 
-  function newState() {
-    return { b: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], s: [0, 0], turn: 0 };
+  function newState(starter) {
+    return { b: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], s: [0, 0], turn: starter || 0 };
   }
   function clone(st) { return { b: st.b.slice(), s: st.s.slice(), turn: st.turn }; }
-
-  function first(p) { return p * 6; }
   function owner(i) { return i < 6 ? 0 : 1; }
   function sideSum(b, p) { var t = 0, o = p * 6; for (var i = o; i < o + 6; i++) t += b[i]; return t; }
   function boardSum(b) { var t = 0; for (var i = 0; i < 12; i++) t += b[i]; return t; }
 
-  // Does sowing pit i put at least one seed on the opponent's side?
-  function feeds(b, i) {
-    var n = b[i]; if (!n) return false;
-    var dist = (first(1 - owner(i)) - i + 12) % 12; // steps to the first opposing pit
-    return n >= dist;
-  }
-
-  // Legal moves of the side to move: non-empty pits, and if the opponent has no seeds,
-  // only the moves that feed him (when at least one exists).
-  function legalMoves(st) {
-    var p = st.turn, o = first(p), res = [];
-    for (var i = o; i < o + 6; i++) if (st.b[i] > 0) res.push(i);
-    if (res.length && sideSum(st.b, 1 - p) === 0) {
-      var f = res.filter(function (i) { return feeds(st.b, i); });
-      if (f.length) res = f;
+  // ---------- The original move evaluator ----------
+  // Plays pit `pit` for `side` on board b0 with stores sa0 (player) / sb0 (computer).
+  // Returns the resulting board and stores, `over` (the move ends the game) and the
+  // static value the original gives to the move:
+  //   2, +1 if the last seed falls on the mover's own side, +3 per seed won;
+  //   333 if the mover passes 24 seeds; 1 for a move that leaves the opponent without
+  //   seeds (forbidden when another move is possible).
+  // Usual rules: if a capture would take the last seeds of the opponent, one seed is left
+  // in that pit. Tournament: full capture, and if the opponent has no seed left the mover
+  // takes all the seeds of his own side.
+  function sim(mode, side, pit, b0, sa0, sb0) {
+    var b = b0.slice(), sa = sa0, sb = sb0, value = 2, over = 0, j, n, k, flag = 0;
+    var opp = function (bb) { var t = 0, o = side === 1 ? 0 : 6; for (var q = o; q < o + 6; q++) t += bb[q]; return t; };
+    if (mode && opp(b0) === 0) {          // tournament: the opponent is starving, can we feed him?
+      if (side === 0) { for (k = 0; k <= 5 && b0[k] + k - 5 <= 0; k++); if (k === 6) value = 1; }
+      else { for (k = 6; k <= 11 && b0[k] + k - 11 <= 0; k++); if (k === 12) value = 1; }
     }
-    return res;
-  }
-
-  // Plays pit i. Returns {st, path: pits receiving seeds in order, caps: [{pit, n}],
-  // leftOne: pit where one seed was given back (usual rules), or -1}.
-  function doMove(st0, i, tournament) {
-    var st = clone(st0), b = st.b, p = st.turn, n = b[i], j = i, path = [];
-    b[i] = 0;
-    while (n > 0) {
-      j = (j + 1) % 12;
-      if (j === i) continue;          // the origin pit stays empty
-      b[j]++; n--; path.push(j);
-    }
-    var caps = [], leftOne = -1;
-    while (owner(j) !== p && (b[j] === 2 || b[j] === 3)) {
-      caps.push({ pit: j, n: b[j] }); st.s[p] += b[j]; b[j] = 0;
+    j = pit; n = b[pit]; b[pit] = 0;
+    do { if (j === pit) j = (j + 1) % 12; else { b[j]++; n--; j = (j + 1) % 12; } } while (n !== 0);
+    j = (j + 11) % 12;                    // last pit sown
+    if ((side === 1 && j >= 6) || (side === 0 && j <= 5)) value++;
+    while ((b[j] === 2 || b[j] === 3) && ((side === 1 && j <= 5) || (side === 0 && j >= 6))) {
+      if (!mode && opp(b) - b[j] === 0) {  // usual rules: leave one seed
+        if (side === 0) sa += b[j] - 1; else sb += b[j] - 1;
+        b[j] = 1;
+      } else {
+        if (side === 0) sa += b[j]; else sb += b[j];
+        b[j] = 0;
+      }
       j = (j + 11) % 12;
     }
-    if (caps.length && !tournament && sideSum(b, 1 - p) === 0) {
-      // Usual rules: leave one seed in the last examined pit so the opponent can play.
-      leftOne = caps[caps.length - 1].pit; b[leftOne] = 1; st.s[p]--;
-    }
-    st.turn = 1 - p;
-    return { st: st, path: path, caps: caps, leftOne: leftOne };
-  }
-
-  // Checks the end of the game for the state about to be played.
-  // seen: optional object of already seen positions (tournament repetition rule).
-  // Returns null, or {st (final state), result: 0 player wins / 1 computer wins / -1 draw,
-  // reason: 'score' | 'small' | 'starve' | 'repeat', gather: [{pit, n, to}]}.
-  function checkEnd(st, tournament, seen) {
-    var b = st.b, left = boardSum(b), gather = [];
-    function outcome(s) { return s[0] > s[1] ? 0 : (s[1] > s[0] ? 1 : -1); }
-    if (st.s[0] > 24 || st.s[1] > 24) return { st: st, result: outcome(st.s), reason: 'score', gather: gather };
-    if (!tournament) {
-      if (left < 7) return { st: st, result: -1, reason: 'small', gather: gather };
-      return null;
-    }
-    var f = clone(st), reason = null;
-    if (sideSum(b, st.turn) === 0) {
-      // Tournament: the side to move has no seed, the opponent takes all his own seeds.
-      reason = 'starve';
-    } else if (left < 7 && seen && seen[key(st)]) {
-      reason = 'repeat';
-    }
-    if (!reason) return null;
-    for (var i = 0; i < 12; i++) if (f.b[i]) {
-      gather.push({ pit: i, n: f.b[i], to: owner(i) });
-      f.s[owner(i)] += f.b[i]; f.b[i] = 0;
-    }
-    return { st: f, result: outcome(f.s), reason: reason, gather: gather };
-  }
-
-  function key(st) { return st.turn + ':' + st.b.join(','); }
-
-  // ---------- Computer player: alpha-beta (negamax) ----------
-
-  var WIN = 10000;
-
-  // Static value for the side to move.
-  function evaluate(st) {
-    var p = st.turn, d = st.s[p] - st.s[1 - p];
-    // small bonus for keeping seeds at home (mobility / threats)
-    return d * 16 + (sideSum(st.b, p) - sideSum(st.b, 1 - p));
-  }
-
-  function terminalValue(st, tournament, plyFromRoot) {
-    var e = checkEnd(st, tournament, null);
-    if (!e) return null;
-    if (e.result === -1) return 0;
-    var v = WIN - plyFromRoot;
-    return e.result === st.turn ? v : -v;
-  }
-
-  function search(st, depth, alpha, beta, tournament, ply, ctx) {
-    if ((++ctx.nodes & 1023) === 0 && Date.now() > ctx.deadline) ctx.timeout = true;
-    if (ctx.timeout) return 0;
-    var t = terminalValue(st, tournament, ply);
-    if (t !== null) return t;
-    var moves = legalMoves(st);
-    if (!moves.length) { // usual rules: no seed, pass
-      var ps = clone(st); ps.turn = 1 - ps.turn;
-      return depth <= 0 ? evaluate(st) : -search(ps, depth - 1, -beta, -alpha, tournament, ply + 1, ctx);
-    }
-    if (depth <= 0) return evaluate(st);
-    var best = -Infinity;
-    for (var k = 0; k < moves.length; k++) {
-      var v = -search(doMove(st, moves[k], tournament).st, depth - 1, -beta, -alpha, tournament, ply + 1, ctx);
-      if (v > best) best = v;
-      if (v > alpha) alpha = v;
-      if (alpha >= beta) break;
-    }
-    return best;
-  }
-
-  // Depth (plies) and time budget by level 1..5.
-  var LEVELS = { 1: { depth: 1, rand: 0.35 }, 2: { depth: 2, rand: 0.1 }, 3: { depth: 4, rand: 0 },
-                 4: { depth: 6, rand: 0 }, 5: { depth: 14, rand: 0 } };
-
-  // Chooses a move for the side to move. Iterative deepening, time-bounded.
-  function bestMove(st, level, tournament, maxMs) {
-    var moves = legalMoves(st);
-    if (!moves.length) return -1;
-    if (moves.length === 1) return moves[0];
-    var cfg = LEVELS[level] || LEVELS[3];
-    if (cfg.rand && Math.random() < cfg.rand) return moves[Math.floor(Math.random() * moves.length)];
-    var ctx = { nodes: 0, deadline: Date.now() + (maxMs || 800), timeout: false };
-    var order = moves.slice(), best = order[0];
-    for (var d = 1; d <= cfg.depth; d++) {
-      var scores = [], alpha = -Infinity, iterBest = null, iterVal = -Infinity;
-      for (var k = 0; k < order.length; k++) {
-        var v = -search(doMove(st, order[k], tournament).st, d - 1, -Infinity, -alpha + 1, tournament, 1, ctx);
-        if (ctx.timeout) break;
-        scores.push({ m: order[k], v: v });
-        if (v > iterVal) { iterVal = v; iterBest = order[k]; }
-        if (v > alpha) alpha = v;
+    if (!mode) {
+      if (side === 1) { if (sb > 24) { over = 1; value = 333; } else { value += 3 * (sb - sb0); if (sa + sb > 41) over = 1; } }
+      else { if (sa > 24) { over = 1; value = 333; } else { value += 3 * (sa - sa0); if (sa + sb > 41) over = 1; } }
+      if (opp(b) === 0) value = 1;
+    } else {
+      if (value === 3 && opp(b) === 0 && ((side === 1 && sb === sb0) || (side === 0 && sa === sa0))) flag = 1;
+      if (opp(b) === 0) {                  // the opponent cannot play: the mover takes his own seeds
+        var own = 0; for (k = side * 6; k < side * 6 + 6; k++) own += b[k];
+        if (side === 0) sa += own; else sb += own;
+        for (k = 0; k < 12; k++) b[k] = 0;
       }
-      if (ctx.timeout) break;
-      // keep a random choice among equally good moves so games vary
-      var ties = scores.filter(function (s) { return s.v === iterVal; });
-      best = ties[Math.floor(Math.random() * ties.length)].m;
-      scores.sort(function (x, y) { return y.v - x.v; });
-      order = scores.map(function (s) { return s.m; });
-      if (Math.abs(iterVal) > WIN / 2) break; // forced win/loss found
+      if (flag) value = 1;
+      else if (side === 1) { if (sb > 24) { over = 1; value = 333; } else value += 3 * (sb - sb0); }
+      else { if (sa > 24) { over = 1; value = 333; } else value += 3 * (sa - sa0); }
     }
-    return best;
+    return { value: value, sa: sa, sb: sb, b: b, over: over };
+  }
+
+  // Legal moves of the side to move: non-empty pits, except the moves valued 1 (that leave the
+  // opponent without seeds) when the best move is not valued 1.
+  function legalMoves(st, mode) {
+    var p = st.turn, o = p * 6, res = [], vals = [], best = 0;
+    for (var i = o; i < o + 6; i++) if (st.b[i] > 0) {
+      var v = sim(mode, p, i, st.b, st.s[0], st.s[1]).value;
+      res.push(i); vals.push(v); if (v > best) best = v;
+    }
+    if (best === 1) return res;
+    return res.filter(function (m, k) { return vals[k] !== 1; });
+  }
+
+  // Plays pit i for the side to move (sowing and captures only).
+  // Returns {st, path: pits receiving a seed in order, caps: [{pit, n, keep}]}.
+  function doMove(st0, i, mode) {
+    var st = clone(st0), b = st.b, p = st.turn, n = b[i], j = i, path = [];
+    b[i] = 0;
+    while (n > 0) { j = (j + 1) % 12; if (j === i) continue; b[j]++; n--; path.push(j); }
+    var caps = [];
+    while (owner(j) !== p && (b[j] === 2 || b[j] === 3)) {
+      var keep = (!mode && sideSum(b, 1 - p) - b[j] === 0) ? 1 : 0;
+      caps.push({ pit: j, n: b[j], keep: keep });
+      st.s[p] += b[j] - keep; b[j] = keep;
+      j = (j + 11) % 12;
+    }
+    return { st: st, path: path, caps: caps };
+  }
+
+  // What happens after side `mover` has played (st.turn still = mover), in the original order.
+  // history: boards seen with fewer than 7 seeds left (tournament repetition rule), updated here.
+  // Returns {st (with turn = next player), over, result: 0 player wins / 1 computer wins / -1 draw,
+  //          repeated, gather: [{pit, n, to}]}.
+  function afterMove(st0, mode, history) {
+    var st = clone(st0), mover = st.turn, gather = [], repeated = false, i;
+    function take(i, to) { if (st.b[i]) { gather.push({ pit: i, n: st.b[i], to: to }); st.s[to] += st.b[i]; st.b[i] = 0; } }
+    if (mode) {
+      if (st.s[0] + st.s[1] > 41 && history.some(function (h) { return h === st.b.join(','); })) {
+        repeated = true;                    // position already played: each takes his own seeds
+        for (i = 0; i < 12; i++) take(i, owner(i));
+      } else if (sideSum(st.b, 1 - mover) === 0) {
+        for (i = mover * 6; i < mover * 6 + 6; i++) take(i, mover);
+      }
+      if (st.s[0] + st.s[1] > 41) { history.unshift(st.b.join(',')); if (history.length > 24) history.length = 24; }
+    }
+    var s = st.s, over = mode ? (s[0] > 24 || s[1] > 24 || (s[0] === 24 && s[1] === 24))
+                              : (s[0] > 24 || s[1] > 24 || s[0] + s[1] > 41);
+    var result = s[0] > 24 ? 0 : (s[1] > 24 ? 1 : -1);
+    // next player; a player without seeds passes his turn (usual rules)
+    var next = 1 - mover;
+    if (!over && sideSum(st.b, next) === 0) next = mover;
+    st.turn = next;
+    return { st: st, over: over, result: result, repeated: repeated, gather: gather };
+  }
+
+  // ---------- Computer player: the original search ----------
+  // A "best-first" minimax: each node lists the moves sorted by static value (stable, so equal
+  // values keep the pit order a, b, ... f / A ... F); plies 1 to 7 look at every move, ply 8
+  // at the 2 best ones, ply 9 at the best one only; a move's value is its static value minus
+  // the best value of the reply. Depth 1, 3, 5, 7, 9 for the levels 1 to 5. The quirks of the
+  // original (shared result slot, no search under a node where a move ends the game) are kept,
+  // so that the computer plays exactly the same moves.
+  function bestMove(st, level, mode) {
+    var depth = [0, 1, 3, 5, 7, 9][level] || 5;
+    var G = { b: st.b.slice(), sa: st.s[0], sb: st.s[1] }, A = [], p, i;
+    function slot() { return { value: 0, move: 0, sa: 0, sb: 0, b: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }; }
+    for (p = 0; p <= depth + 2; p++) { A[p] = []; for (i = 0; i <= 6; i++) A[p][i] = slot(); }
+    function insert(arr, K, value, move, sa, sb, bd) {
+      var k = K + 1;
+      do { k--; } while (value > arr[k].value && k !== 1);
+      if (k === K && !(value > arr[K].value)) return;
+      var pos = k + 1 + (value <= arr[k].value ? 1 : 0);
+      for (var q = K; q >= pos; q--) arr[q] = arr[q - 1];
+      arr[pos - 1] = { value: value, move: move, sa: sa, sb: sb, b: bd };
+    }
+    function search(p, maxD) {
+      var K = p <= 7 ? 6 : (p === 8 ? 2 : 1), side = p % 2 === 1 ? st.turn : 1 - st.turn;
+      var cnt = 0, anyOver = 0, i, arr = A[p], o = side * 6;
+      for (i = 1; i <= K; i++) arr[i] = { value: 0, move: arr[i].move, sa: arr[i].sa, sb: arr[i].sb, b: arr[i].b };
+      for (var pit = o; pit < o + 6; pit++) if (G.b[pit] !== 0) {
+        cnt++;
+        var r = sim(mode, side, pit, G.b, G.sa, G.sb);
+        if (r.over) anyOver = 1;
+        insert(arr, K, r.value, pit, r.sa, r.sb, r.b);
+      }
+      if (cnt < K) K = cnt;
+      if (arr[1].value !== 1) for (i = 2; i <= cnt; i++) if (arr[i] && arr[i].value === 1) K = (K - 1) & 255;
+      if (K === 0) { K = 1; arr[1] = { value: arr[1].value, move: 100, sa: G.sa, sb: G.sb, b: G.b.slice() }; }
+      for (i = 1; i <= K; i++) {
+        var c = arr[i] || slot();
+        G.b = c.b.slice(); G.sa = c.sa; G.sb = c.sb;
+        if (p < maxD && !anyOver) search(p + 1, maxD);
+        var diff = c.value - A[p + 1][1].value;
+        if (i === 1) arr[1] = { value: diff, move: arr[1].move, sa: arr[1].sa, sb: arr[1].sb, b: arr[1].b };
+        if (arr[1].value < diff) arr[1] = { value: diff, move: c.move, sa: c.sa, sb: c.sb, b: c.b };
+      }
+    }
+    search(1, depth);
+    var m = A[1][1].move;
+    return m >= 0 && m < 12 ? m : -1;
   }
 
   var api = {
     LETTERS: LETTERS, newState: newState, clone: clone, owner: owner, sideSum: sideSum, boardSum: boardSum,
-    legalMoves: legalMoves, doMove: doMove, checkEnd: checkEnd, key: key, bestMove: bestMove
+    sim: sim, legalMoves: legalMoves, doMove: doMove, afterMove: afterMove, bestMove: bestMove
   };
   root.AweleEngine = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

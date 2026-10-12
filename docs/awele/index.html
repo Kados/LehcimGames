@@ -6,72 +6,93 @@
 <title>Awélé - LehcimGames</title>
 <link rel="stylesheet" href="../common/style.css">
 <style>
+  canvas.game { touch-action: none; background: #000; }
+  .toolbar button:disabled { color: #808080; }
   #log pre { background: #fff; border: 1px solid #808080; padding: 8px; margin: 0; max-height: 50vh; overflow: auto; white-space: pre-wrap; word-break: break-all; font: 13px/1.4 Consolas, "Courier New", monospace; }
+  dialog .radios { display: flex; gap: 16px; align-items: center; }
+  dialog .radios fieldset { border: 1px solid #808080; padding: 6px 14px; margin: 0; }
+  dialog .radios label { display: block; padding: 3px 0; white-space: pre; }
+  dialog .radios .ok { padding: 10px 14px; }
+  dialog .ask { margin: 10px 16px 0; }
+  dialog.msg h2 { font-weight: normal; }
+  #help .body p { margin: 0 0 8px; }
 </style>
 </head>
 <body>
 <div class="window">
-  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>Jeu d'Awélé</span></div>
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>Awele Pro</span></div>
   <div class="toolbar">
-    <button id="new">Nouvelle partie</button>
-    <label>Mode <select id="mode">
-      <option value="0">Règles usuelles</option>
-      <option value="1">Règles de tournoi</option>
-    </select></label>
-    <label>Niveau <select id="level">
-      <option value="1">1 (novice)</option>
-      <option value="2">2</option>
-      <option value="3">3 (amateur)</option>
-      <option value="4">4</option>
-      <option value="5">5 (expert)</option>
-    </select></label>
-    <label><select id="starter">
-      <option value="0">Le Joueur commence</option>
-      <option value="1">L'Ordinateur commence</option>
-    </select></label>
+    <button id="new">Nouvelle Partie</button>
+    <button id="levelBtn">Niveau</button>
+    <button id="starterBtn">Qui Commence?</button>
     <button id="abandon">Abandonner</button>
+    <button id="modeBtn">Mode</button>
+    <button data-help>Aide</button>
+    <button data-about>A propos de...</button>
     <button id="games">Parties</button>
-    <button data-help>Règles</button>
     <button data-mute></button>
-    <button data-about>A propos</button>
-    <span class="status" id="status"></span>
   </div>
-  <div class="stage"><canvas class="game" id="game" width="640" height="400"></canvas></div>
-  <p class="hint">Clique (ou touche) une de tes 6 cases de la rangée du bas pour semer ses graines. Les tiennes se rangent dans la grande case de droite, celles de l'ordinateur à gauche. Mode, niveau et premier joueur s'appliquent à la partie suivante.</p>
+  <div class="stage"><canvas class="game" id="game" width="634" height="389"></canvas></div>
+  <p class="hint">« Nouvelle Partie » lance une partie ; clique (ou touche) une de tes 6 cases de la rangée du bas pour semer ses graines.
+    Niveau, mode et premier joueur se choisissent entre deux parties. Une bille rouge dans les petits trous près d'une case vaut 11 graines.
+    « Parties » affiche le journal AwParties.txt de la session et permet de le télécharger.</p>
 </div>
 
-<dialog id="help"><h2>Règles du jeu d'Awélé</h2><div class="body">
-  <p>Le jeu se joue à 2. L'ordinateur possède les 6 cases du dessus, tu as les 6 cases du bas. La grande case de gauche sert à ranger les graines gagnées par l'ordinateur, celle de droite sert à ranger les tiennes. Le jeu se pilote avec la souris uniquement.</p>
-  <p>A tour de rôle, chaque joueur doit choisir une de ses cases, prendre toutes les graines s'y trouvant, puis les répartir une à une dans les cases qui suivent à l'exclusion de la case de départ, en tournant dans le sens inverse des aiguilles d'une montre.</p>
-  <p>Ainsi, s'il a plus de 11 graines à distribuer, il aura fait un tour complet : en effet, la case d'origine devant rester vide, la douzième graine se retrouvera dans la même case que la première.</p>
-  <p>Lorsque la distribution est terminée, le joueur regarde la case où il a posé la dernière graine. Si cette case est du côté de l'adversaire et si elle contient 2 ou 3 graines, alors le joueur les prend et les dépose dans la grande case prévue à cet effet.</p>
-  <p>Puis il fait de même avec la case qui suit (dans le sens des aiguilles d'une montre). La prise s'arrête si la case a moins de 2 graines, ou si elle en a plus de 3, ou si elle appartient au joueur.</p>
-  <p>Si l'adversaire n'a plus de graine dans ses cases, alors le joueur qui a la main est tenu de l'alimenter s'il le peut.</p>
+<dialog id="help"><h2>REGLES DU JEU D'AWELE</h2><div class="body">
+  <p>Le jeu se joue à 2.L'ordinateur possède les 6 cases du dessus,tu as les 6 cases du bas.La grande case de gauche sert à ranger les graines gagnées par l'ordinateur,celle de droite sert à ranger les tiennes.Le jeu se pilote avec la souris uniquement.</p>
+  <p>A tour de rôle,chaque joueur doit choisir une de ses cases,prendre toutes les graines s'y trouvant,puis les répartir une à une dans les cases qui suivent à l'exclusion de la case de départ,en tournant dans le sens inverse des aiguilles d'une montre.</p>
+  <p>Ainsi,s'il a plus de 11 graines à distribuer,il aura fait un tour complet:en effet,la case d'origine devant rester vide,la douzième graine se retrouvera dans la même case que la première.</p>
+  <p>Lorsque la distribution est terminée,le joueur regarde la case où il a posé la dernière graine.Si cette case est du côté de l'adversaire et si elle contient 2 ou 3 graines,alors le joueur les prend et les dépose dans la grande case prévue à cet effet.</p>
+  <p>Puis il fait de même avec la case qui suit (dans le sens des aiguilles d'une montre).</p>
+  <p>La prise s'arrête si la case a moins de 2 graines,ou si elle en a plus de 3,ou si elle appartient au joueur.</p>
+  <p>Si l'adversaire n'a plus de graine dans ses cases,alors le joueur qui a la main est tenu de l'alimenter s'il le peut.</p>
   <p>La partie s'arrête dès qu'un joueur a gagné plus de 24 graines.</p>
-  <p>Si un joueur ne peut pas jouer, il passe son tour.</p>
-  <h3>Règles usuelles</h3>
-  <p>Usuellement, un joueur qui aurait pris toutes les graines du côté de son adversaire lui en laisse une dans la dernière case examinée pour qu'il puisse jouer à son tour. S'il reste moins de 7 graines sur le jeu, alors la partie est nulle.</p>
-  <h3>Règles de tournoi</h3>
-  <p>En tournoi, la prise totale est autorisée. De plus, si un joueur n'a plus de graine alors que c'est à lui de jouer, son adversaire ramasse toutes les graines de son côté et la partie s'arrête. En cas de position répétée avec moins de 7 graines sur le plateau, chacun ramasse les graines de son côté et la partie s'arrête.</p>
-  <h3>Enregistrement des parties</h3>
-  <p>Les parties jouées pendant la session sont enregistrées (bouton <b>Parties</b>), comme dans le fichier AwParties.txt du jeu original. Chaque lettre correspond à une case : pour l'ordinateur <b>f e d c b a</b> (de gauche à droite), pour le joueur <b>A B C D E F</b>.</p>
-  <h3>Précisions de cette version</h3>
-  <p>Les cases du joueur sont A à F de gauche à droite, celles de l'ordinateur f e d c b a de gauche à droite (convention du fichier AwParties.txt d'origine). Nourrir l'adversaire signifie que la distribution atteint son côté. En règles usuelles, la graine laissée à l'adversaire reste dans la dernière case prise. Les petites billes vertes marquent la dernière case jouée de chaque côté, les rouges les cases prises au dernier coup. Les niveaux 1 à 5 correspondent à une réflexion de plus en plus profonde (moins d'une seconde par coup).</p>
+  <p>Si un joueur ne peut pas jouer,il passe son tour.</p>
+  <p>Usuellement,un joueur qui aurait pris toutes les graines du côté de son adversaire lui en laisse une dans la dernière case examinée pour qu'il puisse jouer à son tour.S'il reste moins de 7 graines sur le jeu,alors la partie est nulle.</p>
+  <p>En tournoi,la prise totale est autorisée.De plus,si un joueur n'a plus de graine alors que c'est à lui de jouer,son adversaire ramasse toutes les graines de son côté et la partie s'arrête.En cas de position répétée avec moins de 7 graines sur le plateau,chacun ramasse les graines de son côté et la partie s'arrête.</p>
 </div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
-<dialog id="log"><h2>Parties de la session</h2><div class="body">
+<dialog id="modeDlg"><h2>Choix des Règles</h2><p class="ask">Choisis le mode de jeu de  la partie.</p><div class="body radios">
+  <fieldset>
+    <label><input type="radio" name="mode" value="0"> Règles usuelles</label>
+    <label><input type="radio" name="mode" value="1"> Règles de tournoi</label>
+  </fieldset><button class="ok">OK</button>
+</div></dialog>
+
+<dialog id="levelDlg"><h2>Niveau de l'Ordinateur</h2><p class="ask">Choisis le niveau de réflexion de l'ordinateur.</p><div class="body radios">
+  <fieldset>
+    <label><input type="radio" name="level" value="1"> Niveau 1   (novice)</label>
+    <label><input type="radio" name="level" value="2"> Niveau 2</label>
+    <label><input type="radio" name="level" value="3"> Niveau 3   (amateur)</label>
+    <label><input type="radio" name="level" value="4"> Niveau 4</label>
+    <label><input type="radio" name="level" value="5"> Niveau 5   (expert)</label>
+  </fieldset><button class="ok">OK</button>
+</div></dialog>
+
+<dialog id="starterDlg"><h2>Qui Commence?</h2><p class="ask">Choisis qui commence.</p><div class="body radios">
+  <fieldset>
+    <label><input type="radio" name="starter" value="0"> Le Joueur Commence</label>
+    <label><input type="radio" name="starter" value="1"> L'Ordinateur Commence</label>
+  </fieldset><button class="ok">OK</button>
+</div></dialog>
+
+<dialog id="log"><h2>Parties de la session (AwParties.txt)</h2><div class="body">
   <pre id="logText"></pre>
 </div><div class="row"><button id="logDownload" type="button">Télécharger AwParties.txt</button><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
 <dialog id="about"><h2>A propos de...</h2><div class="body">
-  <p><b>Jeu d'Awélé</b><br>Concepteur : Lehcim Noil</p>
+  <p>Concepteur : Lehcim Noil .</p>
+  <p>Adresse : LehcimNoil@flashyland.com</p>
+  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation .</p>
+  <p>Configuration conseillée :256 couleurs - 640*480</p>
+  <p>Mises à jour et autres jeux sur le site : http://lehcim.flashyland.com (site d'origine, historique)</p>
   <p>Merci à Kados et à Julien G. pour leur collaboration.</p>
-  <p>Ce programme est gratuit et son auteur n'est en aucun cas responsable des problèmes éventuels liés à son utilisation.</p>
-  <p>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes et ses sons d'origine.</p>
+  <p><i>Portage navigateur (HTML5/JavaScript) du jeu original pour Windows 3.x, avec ses graphismes et ses sons d'origine. Les règles, le dessin des graines et le jeu de l'ordinateur ont été relevés dans le programme original.</i></p>
 </div><div class="row"><button onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
 <script src="../common/lehcim.js"></script>
 <script src="engine.js"></script>
+<script src="layouts.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

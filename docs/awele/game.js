@@ -1,213 +1,237 @@
 /*
- * Awélé - browser port of Lehcim Noil's Windows 3.x game (2006).
- * You play the 6 bottom pits against the computer (rules in engine.js).
- * Drawing uses the original sheet (assets/sheet.png): background + board on the
- * left (640x400), pit/store tiles, highlight frames, balls and indicators on the right.
- * Seeds are not in the sheet: they are drawn as small yellow seeds like the one in
- * the original highlight sprite.
+ * Awélé - browser port of Lehcim Noil's Windows 3.x game.
+ * You play the 6 bottom pits against the computer (rules and computer player in engine.js).
+ * Everything follows AWELE.EXE: drawing with the original image bank (assets/sheet.png:
+ * background + board 640x400 on the left, tiles and sprites on the right), seeds laid out
+ * like the original (layouts.js), a "hand" ring that carries the seeds pit by pit at
+ * 8 pixels per 40 ms tick, the same sounds at the same moments, the same menus and messages,
+ * and the AwParties.txt game log.
  */
 (function () {
   'use strict';
 
-  var E = window.AweleEngine;
+  var E = window.AweleEngine, LAY = window.AweleLayouts;
   var canvas = document.getElementById('game');
   var g = canvas.getContext('2d');
-  var statusEl = document.getElementById('status');
-  var selMode = document.getElementById('mode'), selLevel = document.getElementById('level'),
-      selStarter = document.getElementById('starter');
+  var $ = function (id) { return document.getElementById(id); };
 
-  // ---------- Sheet layout (measured on sheet.png) ----------
+  // ---------- Sheet layout (AWELE.EXE coordinates) ----------
 
-  var PIT = 64, KEY = [250, 250, 250];
+  var KEY = [250, 250, 250];
   var SPR = {
-    pit: [640, 0, 64, 64],           // empty pit tile
-    store: [640, 64, 64, 128],       // empty store tile
-    red: [642, 194, 12, 12],         // red ball
-    green: [656, 192, 16, 16],       // green ball
-    yellow: [640, 228, 20, 8],       // lit turn indicator
-    flash: function (k) { return [704, k * 64, 64, 64]; },       // 6 frames: yellow ring fading
-    storeLit: function (k) { return [768, k * 128, 64, 128]; }  // 3 frames: store lighting up
+    pit: [640, 0, 64, 64], store: [640, 64, 64, 128],
+    red: [640, 192, 16, 16], green: [656, 192, 16, 16],
+    holes: [640, 208, 64, 20],
+    lit: [640, 228, 20, 8], unlit: [640, 236, 20, 8],
+    cursor: [640, 244, 16, 20],
+    ring: function (k) { return [704, k * 64, 64, 64]; },       // 0 = full ring ... 5 = faintest
+    storeLit: function (k) { return [768, k * 128, 64, 128]; }
   };
-  // Pit i -> top-left corner of its 64x64 tile on the board.
-  function pitXY(i) {
-    return i < 6 ? { x: 128 + 64 * i, y: 134 } : { x: 128 + 64 * (11 - i), y: 70 };
-  }
-  var STORE_XY = [{ x: 512, y: 70 }, { x: 64, y: 70 }];  // [player (right), computer (left)]
-  var TURN_XY = [{ x: 572, y: 50 }, { x: 48, y: 50 }];   // black boxes next to "Joueur" / "Ordi."
-  // Three small holes above (computer) / below (player) each pit.
-  function holeXY(i, k) {
-    var p = pitXY(i);
-    return { x: p.x + 18 + 14 * k, y: (i < 6 ? 198 : 50) + 10 };
-  }
-  // Counter boxes of the lower panel (16x18 each).
-  function countBox(i) {
-    return i < 6 ? { x: 152 + 64 * i, y: 323 } : { x: 152 + 64 * (11 - i), y: 287 };
-  }
-  var STORE_BOX = [{ x: 532, y: 305 }, { x: 92, y: 305 }];
-  var INFO_BOX = { x: 289, y: 11, w: 60, h: 16 };
+  function pitXY(i) { return i < 6 ? { x: 128 + 64 * i, y: 134 } : { x: 128 + 64 * (11 - i), y: 70 }; }
+  var STORE_XY = [{ x: 512, y: 70 }, { x: 64, y: 70 }];   // [player (right), computer (left)]
+  var IND_XY = [{ x: 572, y: 50 }, { x: 48, y: 50 }];     // "Joueur" / "Ordi." lights
+  var TICK = 40;                                           // the original timer (ms)
 
-  // ---------- Settings (the original kept them in Awele.tut) ----------
+  // ---------- Settings (the original keeps them in Awele.tut) ----------
 
-  var settings = { tournament: 0, level: 3, starter: 0 };
+  var settings = { mode: 1, level: 3, starter: 0 };        // as in the Awele.tut shipped with the game
   try {
-    var saved = JSON.parse(localStorage.getItem('lehcim.awele.settings'));
+    var saved = JSON.parse(localStorage.getItem('lehcim.awele.settings2'));
     if (saved) for (var k in settings) if (saved[k] != null) settings[k] = +saved[k];
   } catch (e) { /* ignore */ }
-  selMode.value = settings.tournament; selLevel.value = settings.level; selStarter.value = settings.starter;
   function saveSettings() {
-    try { localStorage.setItem('lehcim.awele.settings', JSON.stringify(settings)); } catch (e) { /* ignore */ }
+    try { localStorage.setItem('lehcim.awele.settings2', JSON.stringify(settings)); } catch (e) { /* ignore */ }
   }
+
+  // ---------- Sounds (WAVE_1..7 of the original) ----------
+  // 1 seeds picked up, 2 end of the sowing, 3 seed dropped, 4 store lighting up after a capture,
+  // 5 end of the game, 6 menu click / new game, 7 pit captured.
+  var soundsLoaded = false;
+  function sfx(n) { if (soundsLoaded) Lehcim.play('w' + n); }
+  function loadSounds() {
+    if (soundsLoaded) return; soundsLoaded = true;
+    var m = {}; for (var i = 1; i <= 7; i++) m['w' + i] = 'assets/sounds/' + i + '.wav';
+    Lehcim.loadSounds(m);
+  }
+  ['pointerdown', 'keydown'].forEach(function (ev) { window.addEventListener(ev, loadSounds, { once: true }); });
 
   // ---------- Game state ----------
 
-  var game = null;       // {st, tournament, level, moves, over, seen, token, entry}
-  var disp = null;       // what is drawn: {b, s} updated seed by seed during animations
-  var busy = true;       // animation or computer thinking: clicks ignored
-  var hover = -1;
-  var flashAt = {};      // pit -> time of the last seed drop (highlight frames)
-  var storeAt = [0, 0];  // store -> time of the last capture
-  var lastPlayed = [-1, -1], capMarks = [];
-  var sessionGames = []; // games of this session, for the AwParties.txt log
+  var game = null;          // null = no game (board empty, as after "Abandonner" or the end message)
+  var anim = null;          // move being animated (timer running)
+  var hist = [];            // tournament: boards with fewer than 7 seeds already seen
+  var sessionGames = [];    // games of this session, for the AwParties.txt log
+  var mouse = null;         // mouse position on the canvas (the game draws its own cursor)
 
-  var soundsLoaded = false;
-  function sfx(name, vol) { if (soundsLoaded) Lehcim.play(name, vol); }
-  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  function setStatus(t) { statusEl.textContent = t; }
+  // What is drawn: pits and stores are only redrawn at the moments the original redraws them.
+  var view = { b: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], s: [0, 0], ind: [0, 0] };
+
+  function inGame() { return !!game; }
+  function updateMenus() {
+    ['new', 'modeBtn', 'levelBtn', 'starterBtn'].forEach(function (id) { $(id).disabled = inGame(); });
+    $('abandon').disabled = !inGame();
+  }
 
   function newGame() {
-    var token = {};
-    game = {
-      st: E.newState(), tournament: !!settings.tournament, level: settings.level,
-      moves: [], over: false, seen: {}, token: token
-    };
-    game.st.turn = settings.starter;
-    game.entry = { tournament: game.tournament, level: game.level, moves: game.moves };
-    sessionGames.push(game.entry);
-    disp = { b: game.st.b.slice(), s: game.st.s.slice() };
-    flashAt = {}; storeAt = [0, 0]; lastPlayed = [-1, -1]; capMarks = [];
-    sfx('start');
-    nextTurn(token);
+    if (inGame()) return;
+    sfx(6);
+    game = { st: E.newState(settings.starter), mode: settings.mode, level: settings.level, moves: [], wait: false };
+    hist = [];
+    sessionGames.push(game.moves);
+    game.moves.header = { mode: game.mode, level: game.level };
+    view = { b: game.st.b.slice(), s: [0, 0], ind: [0, 0] };   // both lights off at the start
+    updateMenus();
+    if (game.st.turn === 1) computerTurn();
   }
 
-  function alive(token) { return game && game.token === token && !game.over; }
-
-  // Starts the turn of the side to move (or ends the game).
-  function nextTurn(token) {
-    if (!alive(token)) return;
-    var st = game.st;
-    var end = E.checkEnd(st, game.tournament, game.seen);
-    if (end) { finish(end, token); return; }
-    game.seen[E.key(st)] = true;
-    var moves = E.legalMoves(st);
-    if (!moves.length) {
-      // usual rules: a player without seeds passes his turn
-      busy = true;
-      setStatus(st.turn === 0 ? 'Tu ne peux pas jouer : tu passes ton tour.' : "L'ordinateur ne peut pas jouer : il passe son tour.");
-      sfx('pass');
-      sleep(1400).then(function () {
-        if (!alive(token)) return;
-        game.st = E.clone(st); game.st.turn = 1 - st.turn;
-        nextTurn(token);
-      });
-      return;
-    }
-    if (st.turn === 1) {
-      busy = true;
-      setStatus("L'ordinateur réfléchit...");
-      sleep(450).then(function () {
-        if (!alive(token)) return;
-        var m = E.bestMove(game.st, game.level, game.tournament, 900);
-        playMove(m, token);
-      });
-    } else {
-      busy = false;
-      var mustFeed = E.sideSum(st.b, 1) === 0;
-      setStatus(mustFeed ? "A toi : tu dois nourrir l'ordinateur." : 'A toi de jouer.');
-    }
-  }
-
-  // Animates a move seed by seed, then the captures, then hands over.
-  function playMove(pit, token) {
-    busy = true; hover = -1;
-    var st = game.st, p = st.turn, r = E.doMove(st, pit, game.tournament);
-    var letter = E.LETTERS[pit];
-    game.moves.push(letter);
-    lastPlayed[p] = pit; capMarks = [];
-    setStatus(p === 1 ? "L'ordinateur joue la case " + letter + '.' : 'Tu joues la case ' + letter + '.');
-    var delay = r.path.length > 12 ? 110 : 170;
-    var seq = Promise.resolve().then(function () {
-      sfx('take');
-      disp.b[pit] = 0;
-      return sleep(delay + 60);
-    });
-    r.path.forEach(function (j) {
-      seq = seq.then(function () {
-        if (!alive(token)) return;
-        disp.b[j]++; flashAt[j] = performance.now();
-        sfx('seed', 0.8);
-        return sleep(delay);
-      });
-    });
-    seq = seq.then(function () { return sleep(r.caps.length ? 280 : 120); });
-    r.caps.forEach(function (c, n) {
-      seq = seq.then(function () {
-        if (!alive(token)) return;
-        var keep = (c.pit === r.leftOne) ? 1 : 0;   // usual rules: one seed left to the opponent
-        disp.b[c.pit] = keep; disp.s[p] += c.n - keep;
-        capMarks.push(c.pit); storeAt[p] = performance.now();
-        sfx('capture');
-        return sleep(380);
-      });
-    });
-    seq.then(function () {
-      if (!alive(token)) return;
-      game.st = r.st;
-      disp = { b: r.st.b.slice(), s: r.st.s.slice() };
-      nextTurn(token);
-    });
-  }
-
-  // End of game: tournament gathering animation, then the original messages.
-  function finish(end, token) {
-    busy = true; game.over = true;
-    var seq = Promise.resolve();
-    if (end.reason === 'repeat') {
-      setStatus('Position déjà jouée');
-      seq = seq.then(function () { sfx('pass'); return Lehcim.message('Position déjà jouée'); });
-    }
-    if (end.gather.length) {
-      seq = seq.then(function () { return sleep(500); });
-      end.gather.forEach(function (gt) {
-        seq = seq.then(function () {
-          if (game.token !== token) return;
-          disp.b[gt.pit] = 0; disp.s[gt.to] += gt.n; storeAt[gt.to] = performance.now();
-          sfx('seed');
-          return sleep(220);
-        });
-      });
-    }
-    seq.then(function () {
-      if (game.token !== token) return;
-      game.st = end.st;
-      disp = { b: end.st.b.slice(), s: end.st.s.slice() };
-      var s = end.st.s, score = '\nJoueur ' + s[0] + ' - Ordi ' + s[1];
-      var title, text;
-      if (end.result === 0) { sfx('win'); title = 'Bravo'; text = 'Tu as gagné!'; }
-      else if (end.result === 1) { sfx('lose'); title = 'Dommage'; text = 'Tu as perdu...'; }
-      else { sfx('pass'); title = 'Peut mieux faire'; text = 'Ex-aequo'; }
-      if (end.reason === 'small') text += '\nIl reste moins de 7 graines sur le jeu : la partie est nulle.';
-      setStatus(title + ' - ' + text.split('\n')[0]);
-      Lehcim.message(title + '\n' + text + score);
-    });
+  function reset() {
+    game = null; anim = null;
+    view = { b: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], s: [0, 0], ind: [0, 0] };
+    updateMenus();
   }
 
   function abandon() {
-    if (!game || game.over) return;
-    game.over = true; busy = true; game.token = {};
-    sfx('lose');
-    setStatus('Partie abandonnée - Tu as perdu...');
-    disp = { b: game.st.b.slice(), s: game.st.s.slice() };
-    Lehcim.message('Dommage\nTu as abandonné la partie.');
+    if (!game || anim) return;       // ignored while seeds are moving
+    sfx(6);
+    reset();
+  }
+
+  function computerTurn() {
+    game.wait = true;
+    // the original thinks first, then lights "Ordi." and plays
+    setTimeout(function () {
+      if (!game) return;
+      var m = E.bestMove(game.st, game.level, game.mode);
+      if (m < 0) return;
+      view.ind = [0, 1];
+      startMove(m);
+    }, 30);
+  }
+
+  function playerClick(i) {
+    if (!game || anim || game.wait || game.st.turn !== 0) return;
+    if (!game.st.b[i]) return;
+    if (E.legalMoves(game.st, game.mode).indexOf(i) < 0) return;   // must feed the computer
+    view.ind = [1, 0];
+    startMove(i);
+  }
+
+  // Starts the animation of a move: seeds picked up, then carried pit by pit.
+  function startMove(pit) {
+    var st = game.st, side = st.turn, r = E.doMove(st, pit, game.mode);
+    var p = pitXY(pit);
+    anim = {
+      side: side, origin: pit, idx: pit, seeds: st.b[pit], r: r,
+      x: p.x, y: p.y, phase: 'pick', k: 0, captured: false, end: null
+    };
+    st.b[pit] = 0;              // the counters show it at once, the pit is redrawn by the ring
+    game.wait = true;
+  }
+
+  // One 40 ms tick of the original timer.
+  function tick() {
+    var a = anim, st = game.st, b = st.b;
+    if (a.phase === 'pick') {                       // ring appearing over the pit (5 frames)
+      a.k++;
+      if (a.k === 5) { a.k = 0; a.phase = 'sow'; sfx(1); }
+      return;
+    }
+    if (a.phase === 'sow') {
+      if (aligned(a)) {
+        if (a.idx === a.origin) view.b[a.idx] = b[a.idx];
+        else { b[a.idx]++; a.seeds--; view.b[a.idx] = b[a.idx]; sfx(3); }
+        a.idx = (a.idx + 1) % 12;
+      }
+      if (a.seeds > 0) step(a);
+      else {
+        a.idx = (a.idx + 11) % 12;
+        if (!capturable(a)) a.phase = 'end';
+        else a.phase = 'capture';
+      }
+      return;
+    }
+    if (a.phase === 'capture') {
+      if (aligned(a)) {
+        sfx(7);
+        var n = b[a.idx], keep = (!game.mode && E.sideSum(b, 1 - a.side) - n === 0) ? 1 : 0;
+        st.s[a.side] += n - keep; b[a.idx] = keep; view.b[a.idx] = keep;
+        a.idx = (a.idx + 11) % 12;
+      }
+      var limit = a.side === 0 ? 448 : 128;
+      if (capturable(a) && a.x !== limit) a.x += a.side === 0 ? 8 : -8;
+      else { a.phase = 'end'; a.captured = true; }
+      return;
+    }
+    if (a.phase === 'end') {                        // ring fading out (6 frames), store lighting up
+      if (a.k === 0) {
+        sfx(2);
+        if (game.mode) {
+          st.turn = a.side;
+          a.end = E.afterMove(st, game.mode, hist);
+          if (a.end.gather.length) {
+            a.captured = true;
+            game.st.b = a.end.st.b.slice(); game.st.s = a.end.st.s.slice();
+            for (var i = 0; i < 12; i++) view.b[i] = game.st.b[i];
+          }
+        }
+      }
+      if (a.captured && a.k === 5) sfx(4);
+      a.k++;
+      if (a.k === 5) view.s[a.side] = game.st.s[a.side];
+      if (a.k === 6) { anim = null; moveDone(a); }
+    }
+  }
+  function aligned(a) { return (a.x - 64) % 64 === 0 && (a.y === 70 || a.y === 134); }
+  function capturable(a) {
+    var n = game.st.b[a.idx];
+    return (n === 2 || n === 3) && (a.side === 0 ? a.y === 70 : a.y === 134);
+  }
+  // The ring goes right on the bottom row, up on the right, left on the top row, down on the left.
+  function step(a) {
+    if (a.y === 134) { if (a.x !== 448) a.x += 8; else a.y -= 8; }
+    else if (a.y !== 70) { if (a.x === 448) a.y -= 8; else a.y += 8; }
+    else { if (a.x !== 128) a.x -= 8; else a.y += 8; }
+  }
+
+  // After the animation: log, end of the game, next turn.
+  function moveDone(a) {
+    game.moves.push(E.LETTERS[a.origin]);
+    var st = game.st;
+    st.turn = a.side;
+    var end = a.end || E.afterMove(st, game.mode, hist);
+    game.st = end.st;
+    view.b = game.st.b.slice();
+    if (end.over) { finish(end); return; }
+    if (game.st.turn === 1) {
+      computerTurn();             // "Ordi." lights up when it starts playing
+    } else {
+      view.ind = [1, 0];
+      game.wait = false;
+    }
+  }
+
+  function finish(end) {
+    game.wait = true;
+    sfx(5);
+    var caption = ['Tu as gagné!', 'Tu as perdu...', 'Ex-aequo'][end.result === -1 ? 2 : end.result];
+    var text = end.repeated ? 'Position déjà jouée' : ['Bravo', 'Dommage', 'Peut mieux faire'][end.result === -1 ? 2 : end.result];
+    msgBox(caption, text).then(reset);
+  }
+
+  // Windows-like message box: caption in the title bar, text, OK.
+  function msgBox(caption, text) {
+    return new Promise(function (resolve) {
+      var d = document.createElement('dialog'); d.className = 'msg';
+      var h = document.createElement('h2'); h.textContent = caption; d.appendChild(h);
+      var p = document.createElement('p'); p.textContent = text; d.appendChild(p);
+      var row = document.createElement('div'); row.className = 'row';
+      var ok = document.createElement('button'); ok.textContent = 'OK'; row.appendChild(ok);
+      d.appendChild(row); document.body.appendChild(d);
+      function done() { d.close(); d.remove(); resolve(); }
+      ok.addEventListener('click', done);
+      d.addEventListener('cancel', function (e) { e.preventDefault(); done(); });
+      d.showModal(); ok.focus();
+    });
   }
 
   // ---------- Game log (AwParties.txt) ----------
@@ -219,188 +243,146 @@
       'Attention, elles seront effacées à la session suivante !' + NL + NL +
       'Chaque lettre correspond à une case selon la convention suivante:' + NL +
       "  Pour l'ordinateur: f e d c b a" + NL +
-      '  Pour le joueur:    A B C D E F' + NL + NL;
-    var n = 0;
-    sessionGames.forEach(function (e) {
-      if (!e.moves.length) return;   // games without any move are not listed
-      n++;
-      t += (n > 1 ? NL : '') + NL + 'Partie ' + n + '  - ' + (e.tournament ? 'Mode Tournoi' : 'Règles usuelles') +
-        '  - Niveau ' + e.level + NL + e.moves.map(function (m) { return m + '.'; }).join('');
+      '  Pour le joueur:    A B C D E F' + NL;
+    sessionGames.forEach(function (m, n) {
+      t += NL + NL + 'Partie ' + (n + 1) + (m.header.mode ? '  - Mode Tournoi' : '  - Règles usuelles') +
+        '  - Niveau ' + m.header.level + NL + m.map(function (l) { return l + '.'; }).join('');
     });
     return t;
   }
   var logUrl = null;
   function showLog() {
     var t = logText();
-    document.getElementById('logText').textContent = t;
-    // Windows-1252 bytes like the original file (only Latin-1 characters are used).
-    var bytes = new Uint8Array(t.length);
+    $('logText').textContent = t;
+    var bytes = new Uint8Array(t.length);   // Windows-1252 like the original file
     for (var i = 0; i < t.length; i++) { var c = t.charCodeAt(i); bytes[i] = c < 256 ? c : 63; }
     if (logUrl) URL.revokeObjectURL(logUrl);
     logUrl = URL.createObjectURL(new Blob([bytes], { type: 'text/plain' }));
-    document.getElementById('log').showModal();
+    $('log').showModal();
   }
 
   // ---------- Drawing ----------
 
   var sheet = null, keyed = null;
+  function blit(src, r, x, y) { g.drawImage(src, r[0], r[1], r[2], r[3], x, y, r[2], r[3]); }
 
-  function blit(src, r, x, y) { g.drawImage(src, r[0], r[1], r[2], r[3], Math.round(x), Math.round(y), r[2], r[3]); }
-
-  // One seed: yellow with a dark rim and a light spot (like the dot of the original sprite).
-  function seed(x, y, r) {
-    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2);
-    g.fillStyle = '#ffff00'; g.fill();
-    g.lineWidth = r > 3.5 ? 1.2 : 1; g.strokeStyle = '#3a2a00'; g.stroke();
-    g.beginPath(); g.arc(x - r * 0.35, y - r * 0.35, r * 0.35, 0, Math.PI * 2);
-    g.fillStyle = 'rgba(255,255,230,0.9)'; g.fill();
+  function drawPit(i, n) {
+    var p = pitXY(i);
+    blit(sheet, SPR.pit, p.x, p.y);
+    var hy = i < 6 ? p.y + 64 : p.y - 20;
+    blit(sheet, SPR.holes, p.x, hy);
+    if (!n) return;
+    var reds = Math.floor((n - 1) / 11), l = LAY.PIT[(n - 1) % 11 + 1], k;
+    for (k = 0; k < reds; k++) blit(keyed, SPR.red, p.x + 10 + 14 * k, hy + 2);
+    for (k = 0; k < l.length; k += 2) blit(keyed, SPR.green, p.x + l[k], p.y + l[k + 1]);
   }
-
-  // Seeds of a pit: sunflower pattern, so seeds keep their place when one is added.
-  function drawPitSeeds(cx, cy, n) {
-    var r = n <= 12 ? 4.5 : (n <= 22 ? 3.6 : 2.7), c = r * 1.22, ga = 2.39996;
-    for (var i = 0; i < n; i++) {
-      var rad = c * Math.sqrt(i + 0.5), a = i * ga;
-      seed(cx + rad * Math.cos(a), cy + rad * Math.sin(a), r);
-    }
+  function drawStore(s, n) {
+    var q = STORE_XY[s], l = LAY.STORE[Math.min(n, 48)];
+    blit(sheet, SPR.store, q.x, q.y);
+    for (var k = 0; k < l.length; k += 2) blit(keyed, SPR.green, q.x + l[k], q.y + l[k + 1]);
   }
-  // Seeds of a store: a pile filling the capsule-shaped store from the bottom.
-  // Places are computed once for a given seed size (smaller seeds when it gets full).
-  var storePlaces = {};
-  function storeLayout(r) {
-    if (storePlaces[r]) return storePlaces[r];
-    var list = [], sp = r * 2.1, R = 23, top = 31, bottom = 97; // capsule: half circles centred at y 31 / 97
-    for (var row = 0, y = 128 - 8 - r - 2; y > 8 + r; row++, y -= sp * 0.9) {
-      var dy = y < top ? top - y : (y > bottom ? y - bottom : 0);
-      var half = Math.sqrt(Math.max(0, R * R - dy * dy)) - r - 1;
-      var k = Math.floor(2 * half / sp) + 1, x0 = 32 - (k - 1) * sp / 2 + (row % 2 ? 0.8 : -0.8);
-      for (var c = 0; c < k; c++) list.push({ x: x0 + c * sp + ((list.length * 37) % 5 - 2) * 0.3, y: y + ((list.length * 53) % 5 - 2) * 0.3 });
-    }
-    return (storePlaces[r] = list);
-  }
-  function drawStoreSeeds(x, y, n) {
-    var r = 4.3, pl = storeLayout(r);
-    while (pl.length < n && r > 2) { r -= 0.3; pl = storeLayout(r); }
-    for (var i = 0; i < n && i < pl.length; i++) seed(x + pl[i].x, y + pl[i].y, r);
+  function text(str, x, y, color) {
+    g.fillStyle = color; g.fillText(str, x, y);
   }
 
   function draw() {
     requestAnimationFrame(draw);
     if (!sheet) return;
     var now = performance.now();
+    if (anim) {
+      if (!anim.t) anim.t = now;
+      var guard = 0;
+      while (anim && now - anim.t >= TICK && guard++ < 50) { anim.t += TICK; tick(); }
+    }
+
     blit(sheet, [0, 0, 640, 400], 0, 0);
-    if (!disp) return;
-    var legal = (!busy && game && !game.over && game.st.turn === 0) ? E.legalMoves(game.st) : [];
+    for (var i = 0; i < 12; i++) drawPit(i, view.b[i]);
+    drawStore(0, view.s[0]); drawStore(1, view.s[1]);
+    blit(sheet, view.ind[0] ? SPR.lit : SPR.unlit, IND_XY[0].x, IND_XY[0].y);
+    blit(sheet, view.ind[1] ? SPR.lit : SPR.unlit, IND_XY[1].x, IND_XY[1].y);
 
-    // pits
-    for (var i = 0; i < 12; i++) {
-      var p = pitXY(i), age = now - (flashAt[i] || -1e9);
-      if (age < 6 * 60) blit(keyed, SPR.flash(Math.floor(age / 60)), p.x, p.y);
-      else if (i === hover && legal.indexOf(i) >= 0) blit(keyed, SPR.flash(0), p.x, p.y);
-      drawPitSeeds(p.x + 32, p.y + 32, disp.b[i]);
+    var a = anim;
+    if (a) {
+      var fr = a.phase === 'pick' ? 5 - a.k : (a.phase === 'end' ? Math.min(a.k, 5) : 0);
+      if (a.phase === 'end' && a.captured && a.k <= 5) blit(keyed, SPR.storeLit(a.k % 3), STORE_XY[a.side].x, STORE_XY[a.side].y);
+      blit(keyed, SPR.ring(fr), a.x, a.y);
     }
-    // stores
-    for (var s = 0; s < 2; s++) {
-      var q = STORE_XY[s], sa = now - storeAt[s];
-      if (sa < 700) blit(sheet, SPR.storeLit(sa < 120 || sa > 580 ? 0 : (sa < 240 || sa > 460 ? 1 : 2)), q.x, q.y);
-      drawStoreSeeds(q.x, q.y, disp.s[s]);
-    }
-    // turn indicator
-    if (game && !game.over) blit(sheet, SPR.yellow, TURN_XY[game.st.turn].x, TURN_XY[game.st.turn].y);
-    // last move markers: green ball = pit just played, red balls = pits captured
-    for (var pl = 0; pl < 2; pl++) if (lastPlayed[pl] >= 0) {
-      var h = holeXY(lastPlayed[pl], 1); blit(keyed, SPR.green, h.x - 8, h.y - 8);
-    }
-    capMarks.forEach(function (c) {
-      var a = holeXY(c, 0), b = holeXY(c, 2);
-      blit(keyed, SPR.red, a.x - 6, a.y - 6); blit(keyed, SPR.red, b.x - 6, b.y - 6);
-    });
 
-    // lower panel: seed counters
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = 'bold 11px Tahoma, Verdana, sans-serif'; g.fillStyle = '#10205a';
-    for (var j = 0; j < 12; j++) {
-      var cb = countBox(j); g.fillText(String(disp.b[j]), cb.x + 8, cb.y + 9.5);
-    }
-    for (var t = 0; t < 2; t++) g.fillText(String(disp.s[t]), STORE_BOX[t].x + 8, STORE_BOX[t].y + 9.5);
-    // little letters of the log convention under the counters
-    g.font = '9px Tahoma, Verdana, sans-serif'; g.fillStyle = '#c8d4f0';
-    for (var l = 0; l < 12; l++) {
-      var lb = countBox(l); g.fillText(E.LETTERS[l], lb.x - 8, lb.y + 9.5);
-    }
-    // info box: mode and level of the current game
     if (game) {
-      g.font = 'bold 10px Tahoma, Verdana, sans-serif'; g.fillStyle = '#000080';
-      g.fillText((game.tournament ? 'Tournoi' : 'Usuel') + ' - N' + game.level, INFO_BOX.x + INFO_BOX.w / 2, INFO_BOX.y + INFO_BOX.h / 2 + 0.5);
+      var st = game.st;
+      // texts drawn by the original (TextOut, system font, dark red / black)
+      g.font = '13.5px Arial, Helvetica, sans-serif'; g.textBaseline = 'top'; g.textAlign = 'left';
+      text(game.mode ? 'Mode Tournoi' : 'Règles usuelles', 130, 12, '#930103');
+      text('Niveau', 291, 13, '#020000');
+      g.font = 'bold 14px Arial, Helvetica, sans-serif';
+      text(String(game.level), 341, 11, '#020000');
+      for (var j = 0; j < 12; j++) {
+        var v = st.b[j], dx = v < 10 ? 4 : 0;
+        text(String(v), (j < 6 ? (j + 1) * 64 + 88 : (12 - j) * 64 + 88) + dx - 1, j < 6 ? 325 : 289, '#000');
+      }
+      text(String(st.s[0]), 531 + (st.s[0] < 10 ? 4 : 0), 307, '#000');
+      text(String(st.s[1]), 91 + (st.s[1] < 10 ? 4 : 0), 307, '#000');
+      if (mouse && mouse.x < 624 && mouse.y < 380) blit(keyed, SPR.cursor, Math.round(mouse.x), Math.round(mouse.y));
     }
   }
 
   // ---------- Input ----------
 
-  function pitAt(e) {
+  function setMouse(e) {
+    if (e.pointerType !== 'mouse') { mouse = null; canvas.style.cursor = ''; return; }
     var pos = Lehcim.canvasPos(canvas, e);
-    for (var i = 0; i < 6; i++) {
-      var p = pitXY(i), dx = pos.x - (p.x + 32), dy = pos.y - (p.y + 32);
-      if (dx * dx + dy * dy <= 30 * 30) return i;
-    }
-    return -1;
+    mouse = pos;
+    canvas.style.cursor = (game && pos.x < 624 && pos.y < 380) ? 'none' : '';
   }
-  canvas.addEventListener('pointermove', function (e) {
-    hover = pitAt(e);
-    var ok = hover >= 0 && !busy && game && !game.over && E.legalMoves(game.st).indexOf(hover) >= 0;
-    canvas.style.cursor = ok ? 'pointer' : 'default';
-  });
-  canvas.addEventListener('pointerleave', function () { hover = -1; });
+  canvas.addEventListener('pointermove', setMouse);
+  canvas.addEventListener('pointerleave', function () { mouse = null; });
   canvas.addEventListener('pointerdown', function (e) {
-    e.preventDefault();
-    if (busy || !game || game.over || game.st.turn !== 0) return;
-    var i = pitAt(e);
-    if (i < 0) return;
-    if (E.legalMoves(game.st).indexOf(i) < 0) {
-      sfx('bad', 0.5);
-      setStatus(game.st.b[i] === 0 ? 'Cette case est vide.' : "Tu dois nourrir l'ordinateur : choisis une case qui lui donne des graines.");
-      return;
-    }
-    playMove(i, game.token);
+    e.preventDefault(); setMouse(e);
+    var pos = Lehcim.canvasPos(canvas, e);
+    // the original click zone: inside the row of the player's pits
+    if (pos.x > 128 && pos.x < 512 && pos.y > 134 && pos.y < 198) playerClick(Math.floor((pos.x - 64) / 64) - 1);
   });
 
-  document.getElementById('new').addEventListener('click', function () { this.blur(); newGame(); });
-  document.getElementById('abandon').addEventListener('click', function () { this.blur(); abandon(); });
-  document.getElementById('logDownload').addEventListener('click', function () {
+  // Dialogs with radio buttons (Niveau, Qui Commence?, Mode), like the original ones.
+  function radioDialog(id, value, apply) {
+    var d = $(id);
+    d.querySelectorAll('input[type=radio]').forEach(function (r) {
+      r.checked = +r.value === value;
+      r.onclick = function () { sfx(6); };
+    });
+    d.querySelector('.ok').onclick = function () {
+      var c = d.querySelector('input[type=radio]:checked');
+      if (c) apply(+c.value);
+      saveSettings(); d.close();
+    };
+    d.showModal();
+  }
+  function btn(id, f) { $(id).addEventListener('click', function () { this.blur(); f(); }); }
+  btn('new', newGame);
+  btn('abandon', abandon);
+  btn('levelBtn', function () { if (!inGame()) radioDialog('levelDlg', settings.level, function (v) { settings.level = v; }); });
+  btn('starterBtn', function () { if (!inGame()) radioDialog('starterDlg', settings.starter, function (v) { settings.starter = v; }); });
+  btn('modeBtn', function () { if (!inGame()) radioDialog('modeDlg', settings.mode, function (v) { settings.mode = v; }); });
+  btn('games', showLog);
+  $('logDownload').addEventListener('click', function () {
     if (!logUrl) return;
     var a = document.createElement('a'); a.href = logUrl; a.download = 'AwParties.txt';
     document.body.appendChild(a); a.click(); a.remove();
   });
-  document.getElementById('games').addEventListener('click', function () { this.blur(); showLog(); });
-  function onSetting() {
-    settings.tournament = +selMode.value; settings.level = +selLevel.value; settings.starter = +selStarter.value;
-    saveSettings();
-    // a game not started yet takes the new settings at once
-    if (game && !game.moves.length && !game.over) { sessionGames.pop(); newGame(); }
-    else setStatus('Réglage pris en compte à la prochaine partie.');
-  }
-  [selMode, selLevel, selStarter].forEach(function (s) { s.addEventListener('change', onSetting); });
 
   // ---------- Start ----------
 
   Lehcim.initPage();
   Lehcim.fitCanvas(canvas);
-  // Sounds (guessed from their length): 6 = short click (seed drop), 3 = pick up,
-  // 4 = capture, 5 = long jingle (win), 7 = lose, 2 = pass / draw, 1 = new game / refused click.
-  // Loaded on the first click/key: browsers refuse to start audio before a user gesture.
-  function loadSounds() {
-    if (soundsLoaded) return; soundsLoaded = true;
-    Lehcim.loadSounds({
-      seed: 'assets/sounds/6.wav', take: 'assets/sounds/3.wav', capture: 'assets/sounds/4.wav',
-      win: 'assets/sounds/5.wav', lose: 'assets/sounds/7.wav', pass: 'assets/sounds/2.wav',
-      start: 'assets/sounds/1.wav', bad: 'assets/sounds/1.wav'
-    });
-  }
-  ['pointerdown', 'keydown'].forEach(function (ev) { window.addEventListener(ev, loadSounds, { once: true }); });
+  updateMenus();
   Promise.all([Lehcim.loadSheet('assets/sheet.png', null), Lehcim.loadSheet('assets/sheet.png', KEY)])
-    .then(function (s) { sheet = s[0]; keyed = s[1]; newGame(); });
+    .then(function (s) { sheet = s[0]; keyed = s[1]; });
   requestAnimationFrame(draw);
 
   // test hook (used by the automated checks only)
-  window.__awele = { get game() { return game; }, get busy() { return busy; }, playMove: function (i) { playMove(i, game.token); }, logText: logText };
+  window.__awele = {
+    get game() { return game; }, get anim() { return anim; }, get view() { return view; },
+    newGame: newGame, click: playerClick, logText: logText, settings: settings,
+    setPosition: function (b, st) { game.st.b = b.slice(); game.st.s = st.slice(); view.b = b.slice(); view.s = st.slice(); }
+  };
 })();
