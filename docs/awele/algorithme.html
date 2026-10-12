@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Awélé : l'algorithme - LehcimGames</title>
+<link rel="stylesheet" href="../common/style.css">
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>Awélé : l'algorithme</span></div>
+  <div class="article">
+    <h1>Awélé : comment fonctionne l'algorithme</h1>
+    <p class="lead">L'ordinateur joue à l'Awélé avec une recherche alpha-bêta classique (variante negamax), approfondie pas à pas tant qu'il lui reste du temps. Il évalue une position surtout par la différence de graines capturées. Les niveaux changent la profondeur de réflexion et, pour les plus faciles, ajoutent des coups au hasard. Tout tient dans <code>engine.js</code>, sans dépendance.</p>
+
+    <h2>Ce que fait l'algorithme</h2>
+
+    <h3>Le moteur de règles</h3>
+    <p>Le plateau est un simple tableau de 12 cases <code>b</code> : 0 à 5 pour le joueur (A à F), 6 à 11 pour l'ordinateur. Les graines gagnées sont dans <code>s[0]</code> et <code>s[1]</code>. Semer, c'est avancer d'une case à chaque graine, indice croissant modulo 12, en sautant la case de départ quand elle contient 12 graines ou plus.</p>
+    <p><code>doMove</code> joue un coup et renvoie un nouvel état (l'ancien n'est jamais modifié, ce qui simplifie la recherche). Après la distribution, il remonte depuis la dernière case tant qu'elle est chez l'adversaire et contient 2 ou 3 graines, et capture. En "Règles usuelles", si une prise vide complètement le camp adverse, une graine est rendue dans la dernière case prise (<code>leftOne</code>).</p>
+    <p><code>legalMoves</code> liste les cases non vides du joueur au trait. Si l'adversaire n'a plus rien, seuls les coups qui le nourrissent sont permis (test <code>feeds</code> : le nombre de graines atteint-il le premier trou adverse ?). <code>checkEnd</code> arrête la partie quand un camp dépasse 24 graines, quand il en reste moins de 7 en règles usuelles (nulle), et en règles de tournoi quand le joueur au trait n'a plus de graines ou qu'une position déjà vue revient avec moins de 7 graines (clé <code>key</code> = trait + contenu des cases).</p>
+
+    <h3>La recherche : negamax avec élagage alpha-bêta</h3>
+    <p>La fonction <code>search</code> explore l'arbre des coups. En negamax, chaque nœud renvoie la valeur pour le joueur au trait, et on inverse le signe en remontant d'un niveau. L'élagage alpha-bêta coupe une branche dès qu'on sait qu'elle ne changera pas le choix final.</p>
+<pre><code>search(état, profondeur, alpha, beta):
+  si fin de partie : renvoyer ±(WIN - ply) ou 0 si nulle
+  coups = legalMoves(état)
+  si aucun coup : passer le tour (règles usuelles)
+  si profondeur &lt;= 0 : renvoyer evaluate(état)
+  pour chaque coup :
+    v = -search(doMove(coup), profondeur-1, -beta, -alpha)
+    garder le meilleur v, relever alpha
+    si alpha &gt;= beta : couper
+</code></pre>
+    <p>Une victoire vaut <code>WIN = 10000</code> moins la distance à la racine : l'ordinateur préfère donc gagner vite et perdre le plus tard possible. Une nulle vaut 0.</p>
+
+    <h3>L'évaluation</h3>
+    <p>Quand la profondeur est épuisée, <code>evaluate</code> donne un score du point de vue du joueur au trait :</p>
+<pre><code>valeur = 16 × (mes prises - ses prises)
+       + (graines dans mon camp - graines dans le sien)</code></pre>
+    <p>Une graine capturée pèse donc 16 fois plus qu'une graine simplement gardée chez soi. Le second terme est un petit bonus de "réserve" : avoir des graines chez soi donne de la mobilité et des menaces, et en garder peu chez l'adversaire le rapproche de la famine.</p>
+
+    <h3>Approfondissement itératif et limite de temps</h3>
+    <p><code>bestMove</code> cherche à profondeur 1, puis 2, puis 3... jusqu'à la profondeur du niveau. Après chaque itération, les coups de la racine sont triés du meilleur au moins bon, et l'itération suivante les essaie dans cet ordre : c'est ce qui rend l'élagage efficace. La fenêtre de chaque coup est <code>(-Infinity, -alpha + 1)</code>, si bien que les coups à égalité avec le meilleur gardent une valeur exacte.</p>
+    <p>Tous les 1024 nœuds (<code>ctx.nodes &amp; 1023</code>), la recherche regarde l'horloge. Si l'échéance est dépassée, l'itération en cours est abandonnée et on garde le résultat de la précédente. Le jeu donne 900 ms (<code>bestMove(..., 900)</code> dans <code>game.js</code>, 800 ms par défaut). La recherche s'arrête aussi dès qu'un gain ou une perte forcés sont trouvés (<code>|valeur| &gt; WIN / 2</code>).</p>
+
+    <h3>Niveaux et hasard</h3>
+    <p>La table <code>LEVELS</code> fixe la profondeur maximale en demi-coups et une probabilité <code>rand</code> de jouer un coup légal tiré au hasard, sans réfléchir. Quand plusieurs coups ont exactement le meilleur score, l'un d'eux est choisi au hasard pour que les parties varient.</p>
+    <table>
+      <tr><th>Niveau</th><th>Profondeur max</th><th>Coup au hasard</th><th>Temps réel</th></tr>
+      <tr><td>1 (novice)</td><td>1</td><td>35 %</td><td>instantané</td></tr>
+      <tr><td>2</td><td>2</td><td>10 %</td><td>instantané</td></tr>
+      <tr><td>3 (amateur)</td><td>4</td><td>0 %</td><td>quelques ms</td></tr>
+      <tr><td>4</td><td>6</td><td>0 %</td><td>moins de 10 ms</td></tr>
+      <tr><td>5 (expert)</td><td>14</td><td>0 %</td><td>900 ms (limite)</td></tr>
+    </table>
+    <p>Mesuré sous Node sur une machine récente, le niveau 5 atteint 13 à 14 demi-coups en 900 ms, soit 2,5 à 4,5 millions de positions. Sur une machine lente, il s'arrête plus tôt : sa force dépend donc un peu du matériel. Un coup unique est joué directement sans recherche.</p>
+
+    <h2>Pourquoi ce choix</h2>
+    <p>L'Awélé s'y prête très bien. Il y a au plus 6 coups par position, souvent moins : l'arbre est étroit, et alpha-bêta descend loin pour un coût modeste. Le jeu est fini, à information complète, sans hasard : exactement le terrain du minimax.</p>
+    <p>L'évaluation "différence de prises" est la plus naturelle : c'est le score même du jeu, et la victoire est une question de graines. Elle est rapide à calculer, ce qui laisse le budget à la profondeur, qui compte plus que la finesse à ce jeu.</p>
+    <p>La limite de temps protège l'interface. La recherche tourne sur le fil principal du navigateur, de façon synchrone : pendant ces 900 ms, la page ne répond plus. En dessous d'une seconde, et précédé d'une pause de 450 ms "L'ordinateur réfléchit...", c'est acceptable et évite un Web Worker et toute complexité.</p>
+    <p>Les niveaux bas jouent volontairement mal (profondeur 1 ou 2, coups au hasard) : le but est le plaisir du joueur novice, comme dans l'original des années 2000, pas la force brute.</p>
+    <p>Les compromis acceptés : pas de mémoire des positions déjà calculées, pas d'extension en fin de branche (on peut couper au milieu d'une série de prises), et la règle de répétition du tournoi n'est pas vue par la recherche (<code>checkEnd</code> y est appelé avec <code>seen = null</code>).</p>
+
+    <h2>Comment l'améliorer</h2>
+    <p>Par ordre d'intérêt :</p>
+    <ol>
+      <li><strong>Table de transposition avec hachage de Zobrist.</strong> Les mêmes positions reviennent par des ordres de coups différents. Mémoriser valeur, profondeur, borne et meilleur coup éviterait de les recalculer et améliorerait le tri à chaque nœud, pas seulement à la racine. Gain : plusieurs demi-coups au niveau 5. Effort : moyen (une table de 12 × 49 nombres aléatoires, mise à jour dans <code>doMove</code>, lecture/écriture dans <code>search</code>).</li>
+      <li><strong>Tri des coups à l'intérieur de l'arbre.</strong> Aujourd'hui seuls les coups de la racine sont triés. Essayer d'abord les coups qui capturent (ou le "coup tueur" qui a coupé au même niveau) ferait couper alpha-bêta beaucoup plus tôt. Effort : faible, dans la boucle de <code>search</code>.</li>
+      <li><strong>Recherche de quiescence.</strong> À profondeur 0, continuer tant que des prises sont possibles avant d'appeler <code>evaluate</code>. Cela évite de juger une position juste avant une grosse prise adverse. Effort : faible à moyen, une fonction de plus appelée à la place de <code>evaluate</code>.</li>
+      <li><strong>Web Worker.</strong> Déplacer <code>bestMove</code> dans un worker (le moteur n'utilise pas le DOM, c'est facile) garderait l'interface fluide et permettrait de donner 2 à 3 s au niveau 5. Effort : faible ; l'appel dans <code>nextTurn</code> de <code>game.js</code> devient un message asynchrone.</li>
+      <li><strong>Évaluation plus riche, réglée par auto-jeu.</strong> Ajouter des termes connus de l'Awélé : cases adverses à 1 ou 2 graines (vulnérables), grosse case qui fait le tour (un "kroo"), mobilité. Régler les poids (16 et 1 aujourd'hui) en faisant jouer le moteur contre lui-même sous Node. Effort : moyen, dans <code>evaluate</code>.</li>
+      <li><strong>Répétition dans la recherche.</strong> Passer l'historique des positions à <code>search</code> en mode tournoi pour qu'il voie venir la fin par répétition. Effort : faible.</li>
+      <li><strong>Graine aléatoire réglable.</strong> Remplacer <code>Math.random</code> par un générateur avec graine permettrait des tests reproductibles du moteur. Effort : très faible.</li>
+    </ol>
+    <p>Une table de finales (toutes les positions à peu de graines résolues d'avance) rendrait le niveau 5 parfait en fin de partie, mais coûte en taille de fichier : à réserver si l'on veut un niveau "imbattable".</p>
+
+    <div class="nav"><a href="./">▶ Jouer à Awélé</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+  </div>
+</div>
+</body>
+</html>

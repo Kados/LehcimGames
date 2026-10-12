@@ -1,27 +1,32 @@
 # Stack
 
-Extracted from `stack.zip`. Single-player arcade game: coloured marbles fall and bounce off movable "doors"; protect the "thing" moving at the bottom and score as many points as possible. Keeps a high-score table.
+Extrait de `stack.zip`. Jeu d'arcade pour 1 joueur : des billes de couleur tombent et rebondissent sur des « portes » que l'on déplace ; il faut protéger la « chose » qui se déplace en bas et marquer le plus de points possible. Avec un tableau des meilleurs scores.
 
-## Files
+## Fichiers
 
-| File | Size | Role |
+| Fichier | Taille | Rôle |
 |---|---|---|
-| `STACK.EXE` | 291 KB | The game (16-bit Windows 3.0 executable, Borland Pascal). |
-| `IMSTACK.LIO` | 205 KB | Compressed graphics bank (RLE, 345 600 bytes once decompressed). |
-| `IMSTPAL.bmp` | 1 KB | 2x2 BMP carrying the 256-colour palette for `IMSTACK.LIO`. |
-| `StackMus.mid` | 10 KB | Background music (MIDI format 0); can be turned off ("Sans Musique"). |
-| `Stacks.tut` | 160 B | **High-score table** (5 entries, names up to 14 letters). Same obfuscation as LabRaph (XOR `0xFF` + filler bytes). Default scores: 350, 300, 250, 150, 100 (Pro, Expert, Amateur, Junior, ...). |
-| `Lisez-moi.txt` | 463 B | French readme: `stack.exe`, `imstack.lio`, `imstpal.bmp`, `stackmus.mid` and `stacks.tut` must stay together. |
-| `WAVEMIX.INI`, `WAVMIX16.DLL`, `WING.DLL` | | Shared support files (see below). |
+| `STACK.EXE` | 291 Ko | Le jeu (exécutable Windows 3.0 16 bits, Borland Pascal). |
+| `IMSTACK.LIO` | 205 Ko | Banque d'images compressée (RLE, 345 600 octets une fois décompressée). |
+| `IMSTPAL.bmp` | 1 Ko | BMP de 2x2 pixels qui porte la palette de 256 couleurs de `IMSTACK.LIO`. |
+| `StackMus.mid` | 10 Ko | Musique de fond (MIDI format 0) ; elle peut être coupée (« Sans Musique »). |
+| `Stacks.tut` | 160 o | **Tableau des meilleurs scores** (5 entrées, noms de 14 lettres au plus). Même brouillage que LabRaph (XOR `0xFF` et octets de remplissage). Scores d'origine : Pro 350, Expert 300, Amateur 250, Junior 150, Gros Mauvais 100. |
+| `Lisez-moi.txt` | 463 o | Mode d'emploi en français : `stack.exe`, `imstack.lio`, `imstpal.bmp`, `stackmus.mid` et `stacks.tut` doivent rester ensemble. |
+| `WAVEMIX.INI`, `WAVMIX16.DLL`, `WING.DLL` | | Fichiers de support partagés (voir plus bas). |
 
-## Rules (summarised from the in-game help)
+## Règles (résumé de l'aide du jeu)
 
-- **Goal**: get the maximum number of points; you score each time a new marble appears.
-- Marbles are handled automatically as long as the "thing" moving from right to left is intact; it is damaged when hit by a marble and only has **3 lives**.
-- Click to the right or left of a "door" to move it toward the mouse; placing doors cleverly steers the marbles' bounces.
-- A marble falling on a marble of the same colour disappears along with it, freeing vital space.
-- The frequency and variety of the marbles increase with the chosen starting level.
+- **But** : obtenir le maximum de points ; on marque un point chaque fois qu'une nouvelle bille apparaît.
+- Les billes sont générées automatiquement tant que la « chose » qui se déplace de droite à gauche est intacte ; elle est détruite dès qu'elle heurte une bille et n'a que **3 vies**. La barre d'espacement la fait accélérer.
+- Un clic gauche à droite ou à gauche d'une « porte » la fait glisser vers la souris ; bien placer les portes permet d'orienter le rebond des billes.
+- Une bille qui tombe sur une bille de même couleur disparaît avec elle, ce qui libère une place vitale pour la chose.
+- Au départ, le score, la fréquence d'apparition des billes et leur variété sont proportionnels au niveau choisi.
 
-## Shared support files
+## Version navigateur
 
-`WING.DLL`, `WAVMIX16.DLL` and `WAVEMIX.INI` are the Microsoft WinG graphics library, the Microsoft WaveMix sound mixing library and its configuration file. They are identical in every game; see the [root README](../README.md#files-common-to-every-game).
+- Jouer : [`docs/stack/`](../docs/stack/) (en ligne : `https://kados.github.io/LehcimGames/stack/` une fois GitHub Pages activé)
+- Comment fonctionne l'algorithme, pourquoi, et comment l'améliorer : [`docs/stack/algorithme.html`](../docs/stack/algorithme.html)
+
+## Fichiers de support partagés
+
+`WING.DLL`, `WAVMIX16.DLL` et `WAVEMIX.INI` sont la bibliothèque graphique WinG de Microsoft, la bibliothèque de mixage sonore WaveMix de Microsoft et son fichier de configuration. Ils sont identiques dans tous les jeux ; voir le [README principal](../README.md#fichiers-communs-à-tous-les-jeux).

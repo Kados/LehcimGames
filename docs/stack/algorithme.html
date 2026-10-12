@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stack : l'algorithme - LehcimGames</title>
+<link rel="stylesheet" href="../common/style.css">
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>Stack : l'algorithme</span></div>
+  <div class="article">
+    <h1>Stack : comment fonctionne l'algorithme</h1>
+    <p class="lead">Stack n'a pas d'adversaire « intelligent » : c'est une petite simulation en temps réel sur une grille. Des billes tombent, les « portes » pyramidales les dévient d'une colonne à gauche ou à droite, deux billes de même couleur s'annulent, et la « chose » traverse un couloir où tout contact lui coûte une vie. Tout tient dans <code>game.js</code>, avec des règles simples et déterministes que le joueur peut apprendre et anticiper.</p>
+
+    <h2>Ce que fait l'algorithme</h2>
+
+    <h3>La boucle de simulation</h3>
+    <p>Le plateau mesure 400 x 420 pixels, découpé en <code>COLS = 20</code> colonnes de <code>CELL = 20</code> pixels. À chaque image, <code>frame()</code> (appelée par <code>requestAnimationFrame</code>) calcule le temps écoulé <code>dt</code>, plafonné à 0,05 s pour éviter les sauts après un onglet en arrière-plan, puis appelle <code>update(dt)</code> et <code>render()</code>. L'ordre des étapes compte :</p>
+<pre><code>update(dt):
+  stepFx(dt)                       // effets visuels
+  si partie en cours et pas en pause :
+    stepDoors(dt)                  // portes d'abord
+    si la chose est vivante :
+      spawnT -= dt
+      si spawnT &lt;= 0 : spawnMarble(); spawnT = spawnInterval() * (0.75 + random*0.5)
+    pour chaque bille : stepMarble(m, dt)
+    stepChose(dt)                  // collisions avec la chose
+    supprimer les billes marquées dead</code></pre>
+    <p>Toutes les vitesses sont exprimées en pixels par seconde et multipliées par <code>dt</code> : le jeu tourne à la même allure à 30 ou 144 images par seconde.</p>
+
+    <h3>Les billes : chute, rebond sur les portes, empilement</h3>
+    <p>Une bille passe par trois états. En <code>appear</code>, elle grossit dans son trou pendant 0,45 s. En <code>fall</code>, elle descend tout droit à <code>fallSpeed() = 70 + 10 x niveau</code> px/s. En <code>roll</code>, elle roule sur une porte.</p>
+    <p>Il n'y a pas de vraie physique (ni gravité accélérée, ni rebond élastique) : la déviation est une règle de grille. Chaque porte occupe deux colonnes, <code>col</code> et <code>col + 1</code>. Dans <code>stepMarble</code>, on teste si la bille <em>franchit</em> pendant ce pas la ligne située juste au-dessus de la porte (<code>m.y &lt; yy</code> et <code>ny &gt;= yy</code>, avec <code>yy = d.top - CELL</code>). Ce test de franchissement, plutôt qu'un test de position, garantit qu'aucune bille ne traverse une porte même avec un grand <code>dt</code>.</p>
+    <ul>
+      <li>bille sur la moitié gauche (<code>col</code>) : elle part vers <code>col - 1</code> ;</li>
+      <li>bille sur la moitié droite (<code>col + 1</code>) : elle part vers <code>col + 2</code> ;</li>
+      <li>contre un mur, la direction est inversée (<code>to &lt; 0</code> donne <code>col + 2</code>, <code>to &gt;= COLS</code> donne <code>col - 1</code>).</li>
+    </ul>
+    <p>Pendant le roulement, un paramètre <code>m.t</code> avance de <code>v x dt / 40</code> : la bille glisse en ligne droite (interpolation linéaire) de sa colonne de départ à sa colonne d'arrivée tout en descendant de 40 pixels, la hauteur de la porte. Puis elle repasse en chute libre. Les quatre portes (<code>DOOR_TOPS = [70, 125, 180, 235]</code>) étant superposées, une bille peut ricocher plusieurs fois avant d'atteindre les piles.</p>
+    <p>Les piles sont un simple tableau par colonne, <code>G.stacks[c]</code>, de bas en haut. Quand la bille atteint le sommet de sa pile (<code>stackY(h)</code>) :</p>
+    <ul>
+      <li>si la pile a déjà <code>MAX_STACK = 8</code> billes, la nouvelle éclate ;</li>
+      <li>si la bille du sommet a la même couleur, les deux disparaissent (<code>st.pop()</code>) : c'est tout le « matching », une seule paire, sans réaction en chaîne ;</li>
+      <li>sinon elle est empilée (<code>st.push</code>), en gardant l'image de rotation atteinte pendant sa chute.</li>
+    </ul>
+
+    <h3>Les portes</h3>
+    <p>Un clic dans la bande d'une porte (de <code>top - 10</code> à <code>top + 50</code>) fixe une colonne cible dans <code>clickAt</code>. Ensuite <code>stepDoors</code> avance la porte <strong>une colonne à la fois</strong> : le sprite glisse à 240 px/s vers sa colonne logique, puis après 0,02 s la porte tente le pas suivant. Avant chaque pas, <code>doorBlocked</code> vérifie que la nouvelle position reste dans le plateau (colonnes 0 à 18), qu'aucune bille ne roule sur cette porte et qu'aucune bille à la même hauteur n'occupe les cellules visées. Si c'est bloqué, la cible est annulée : la porte ne pousse jamais une bille.</p>
+
+    <h3>La « chose » et les collisions</h3>
+    <p>La chose (146 x 24 pixels) avance de droite à gauche dans le couloir <code>LANE_Y = 320</code>, qui correspond à la ligne de pile <code>LANE_ROW = 6</code>. Sa vitesse vaut <code>choseSpeed() = 26 + 6 x choseBase()</code> px/s, avec <code>choseBase() = 1 + floor((niveau - 1) / 2)</code>, et elle est multipliée par 4 tant que la barre d'espacement est enfoncée. Sortie à gauche, elle parcourt encore <code>TUNNEL = 100</code> pixels cachés avant de réapparaître à droite.</p>
+    <p><code>stepChose</code> fait deux tests de recouvrement de rectangles (AABB), en ne parcourant que 20 colonnes et la poignée de billes en vol :</p>
+    <ul>
+      <li>une pile qui dépasse dans le couloir (<code>st.length &gt; LANE_ROW</code>) et recouvre l'intervalle <code>[x + 3, x + 143]</code> ; la bille de la ligne 6 est retirée (<code>splice</code>) ;</li>
+      <li>une bille en vol qui traverse le couloir, testée seulement contre le corps (de <code>x + 20</code> à <code>x + 126</code>) : les antennes aux deux bouts laissent passer les billes. Cette bille disparaît.</li>
+    </ul>
+    <p>Après un choc, <code>hitChose</code> retire une vie ; la chose réapparaît à droite après 1,8 s, clignotante et intouchable pendant 1,5 s (<code>grace</code>). Pendant qu'elle est détruite, aucune bille n'apparaît. À 0 vie, c'est <code>gameOver()</code>.</p>
+
+    <h3>Apparition des billes et difficulté</h3>
+    <p><code>spawnMarble</code> tire une colonne au hasard ; si sa pile atteint déjà le couloir (6 billes ou plus), il retire jusqu'à 6 fois. La couleur est tirée parmi <code>nColors() = min(7, 2 + niveau)</code>. Chaque bille rapporte 1 point, et le niveau vaut <code>min(9, 1 + floor(score / 50))</code> ; commencer au niveau N donne d'emblée <code>(N - 1) x 50</code> points. L'intervalle entre deux billes est <code>max(0,6 ; 2,6 - 0,2 x (niveau - 1))</code> secondes, multiplié par un facteur aléatoire entre 0,75 et 1,25.</p>
+
+    <h3>En chiffres</h3>
+    <table>
+      <tr><th>Niveau</th><th>Couleurs</th><th>Intervalle moyen</th><th>Chute</th><th>Chose (normal / accéléré)</th></tr>
+      <tr><td>1</td><td>3</td><td>2,6 s</td><td>80 px/s</td><td>32 / 128 px/s</td></tr>
+      <tr><td>3</td><td>5</td><td>2,2 s</td><td>100 px/s</td><td>38 / 152 px/s</td></tr>
+      <tr><td>5</td><td>7</td><td>1,8 s</td><td>120 px/s</td><td>44 / 176 px/s</td></tr>
+      <tr><td>7</td><td>7</td><td>1,4 s</td><td>140 px/s</td><td>50 / 200 px/s</td></tr>
+      <tr><td>9 (max)</td><td>7</td><td>1,0 s</td><td>160 px/s</td><td>56 / 224 px/s</td></tr>
+    </table>
+    <p>La difficulté monte donc sur trois axes à la fois : plus de billes, plus rapides, et plus de couleurs (donc moins de paires qui s'annulent et des piles qui montent plus vite).</p>
+
+    <h2>Pourquoi ce choix</h2>
+    <p><strong>Une grille plutôt qu'un moteur physique.</strong> Le jeu original pour Windows 3.x raisonnait en cases : une porte dévie toujours d'exactement une colonne. Cette règle déterministe est le cœur du jeu : le joueur peut prévoir où tombera une bille et placer ses portes en conséquence. Une physique réaliste (rebonds, frottements) rendrait les trajectoires imprévisibles et le jeu frustrant.</p>
+    <p><strong>Une boucle simple sur le fil principal.</strong> Il y a au plus quelques dizaines d'objets : les boucles linéaires de <code>doorBlocked</code> et <code>stepChose</code> coûtent quelques microsecondes. Pas besoin de structure spatiale, de Web Worker ni de bibliothèque : un fichier, sans compilation, fidèle à l'esprit du jeu d'origine.</p>
+    <p><strong>Des tests de franchissement.</strong> Plafonner <code>dt</code> et tester le passage d'une ligne plutôt qu'une position évite les billes « fantômes » qui traversent une porte quand le navigateur ralentit.</p>
+    <p>Compromis acceptés : le hasard n'est pas reproductible (<code>Math.random</code>), le pas de temps est variable, et la difficulté plafonne au niveau 9.</p>
+
+    <h2>Comment l'améliorer</h2>
+    <ol>
+      <li><strong>Hasard à graine et pas de temps fixe.</strong> Remplacer <code>rnd()</code> et les <code>Math.random()</code> d'<code>update</code> par un petit générateur à graine (mulberry32, une dizaine de lignes), et faire avancer <code>update</code> par pas fixes de 1/120 s avec un accumulateur dans <code>frame()</code>. On obtient des parties rejouables et des tests automatiques fiables via le crochet <code>window.__stack</code> déjà exposé. Effort : faible.</li>
+      <li><strong>Une courbe de difficulté plus progressive.</strong> Le plancher de 0,6 s de <code>spawnInterval</code> n'est jamais atteint (1,0 s au niveau 9, maximum), et les 7 couleurs sont toutes là dès le niveau 5. On peut prolonger la progression au-delà du niveau 9 avec une courbe qui ralentit (par exemple un intervalle en <code>2,6 x 0,9^(niveau-1)</code>), ou décaler l'arrivée des couleurs. Effort : faible, dans les fonctions en tête de <code>game.js</code>.</li>
+      <li><strong>Une apparition plus équitable.</strong> Comme la déviation est déterministe, une fonction <code>predictColumn(col)</code> peut simuler la descente à travers les quatre portes et donner la colonne d'arrivée. <code>spawnMarble</code> pourrait alors éviter les colonnes dont la pile déborde réellement (aujourd'hui il ne regarde que la colonne de départ, pas celle d'arrivée), ou éviter, aux niveaux faciles, une bille impossible à esquiver. Effort : moyen.</li>
+      <li><strong>Des piles qui débordent moins injustement.</strong> Quand la chose percute une pile de 8 billes, <code>splice(LANE_ROW, 1)</code> fait redescendre la bille de la ligne 7 dans le couloir : la chose suivante sera touchée au même endroit. Vider toute la partie de la pile au-dessus du couloir, ou vérifier une paire de même couleur après le <code>splice</code>, rendrait la suite plus jouable. Effort : faible, dans <code>stepChose</code>.</li>
+      <li><strong>Nettoyage.</strong> La fonction <code>doorUnder</code> n'est plus appelée (la détection est faite dans <code>stepMarble</code>) et peut être supprimée. Effort : trivial.</li>
+    </ol>
+    <div class="callout">Ce qui n'apporterait rien ici : un moteur physique, une grille spatiale ou un Web Worker. Le nombre d'objets est trop faible pour que la performance soit un sujet ; l'intérêt est dans la lisibilité des règles.</div>
+
+    <div class="nav"><a href="./">▶ Jouer à Stack</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+  </div>
+</div>
+</body>
+</html>

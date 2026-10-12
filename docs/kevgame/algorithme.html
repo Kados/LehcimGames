@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KevGame : l'algorithme - LehcimGames</title>
+<link rel="stylesheet" href="../common/style.css">
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>KevGame : l'algorithme</span></div>
+  <div class="article">
+    <h1>KevGame : comment fonctionne l'algorithme</h1>
+    <p class="lead">KevGame est un jeu d'action sur une grille : le poisson poursuit le ver dans une piscine de 21 x 13 cases, chacun doit aller respirer dans des zones à bulles, et on peut poser ou faire sauter des murs. Le moteur (<code>engine.js</code>) fait avancer une simulation case par case, et l'ordinateur décide de sa direction à chaque case à l'aide de cartes de distances calculées par un parcours en largeur (BFS).</p>
+
+    <h2>Ce que fait l'algorithme</h2>
+
+    <h3>La simulation : une grille et un pas de temps</h3>
+    <p>La piscine est un tableau de <code>COLS = 21</code> par <code>ROWS = 13</code> cases de 24 pixels, soit 273 cases. Chaque case peut contenir un morceau de mur (<code>st.walls</code>) ; quatre cases fixes sont des zones à bulles (<code>ZONES</code> : (3,2), (17,2), (3,10), (17,10)).</p>
+    <p>À chaque image, <code>game.js</code> appelle <code>step(st, dt, wants)</code> avec un <code>dt</code> plafonné à 0,05 s. Un animal va toujours d'une case à la case voisine : <code>moveAnimal</code> fait progresser <code>prog</code> de 0 à 1 en <code>CFG.fishCell = CFG.wormCell = 0.28</code> s (environ 3,6 cases par seconde, la même vitesse pour les deux). La direction voulue n'est demandée qu'au moment où l'animal arrive sur une case : c'est pour cela que <code>wants</code> contient des fonctions, appelées seulement quand <code>moving</code> est faux. Si la case visée est un mur ou hors du bassin (<code>solid</code>), l'animal se tourne mais reste sur place.</p>
+    <p>Après les déplacements, <code>step</code> gère dans l'ordre :</p>
+    <ul>
+      <li><b>l'air</b> : dans une zone à bulles, <code>air</code> remonte de <code>breathRate = 0.7</code> par seconde (un plein en moins d'1,5 s) ; ailleurs, il baisse de <code>dt / airTime</code>, avec <code>airTime = 30</code> s ;</li>
+      <li><b>les bonus</b> : une bouée clignotante (un mur de plus, 3 au maximum, <code>maxWalls</code>) et un pétard (une démolition possible pendant <code>chargeTime = 15</code> s). Ils réapparaissent après 5 à 9 s (<code>buoyDelay</code>) et 7 à 12 s (<code>petardDelay</code>), sur une case tirée au hasard par <code>freeCell</code> : 200 essais au plus, case libre, hors zone, à au moins 3 cases (distance de Manhattan) des deux animaux ;</li>
+      <li><b>la fin de manche</b> : le poisson attrape le ver si la distance de Manhattan entre leurs positions en pixels est inférieure à <code>catchDist = 14</code> px ; un animal sans air perd (les deux à la fois : ex aequo) ; à <code>roundTime = 90</code> s, le ver gagne. Le temps est arrondi au dixième, ce qui sert à départager les joueurs dans <code>matchResult</code>.</li>
+    </ul>
+    <p>Les murs suivent les règles d'origine : <code>buildWall</code> pose 3 pièces en travers de la case située derrière l'animal (jamais sur une zone, un bonus ou un animal) ; <code>demolish</code> vide un rectangle de 3 cases de large sur 2 de profondeur devant lui.</p>
+
+    <h3>Le joueur ordinateur : des cartes de distances</h3>
+    <p>L'outil de base est <code>bfs(st, x, y, ignoreWalls)</code> : un parcours en largeur qui remplit un <code>Int16Array</code> de 273 distances (-1 = inaccessible). La fonction <code>downhill</code> choisit ensuite, parmi les 4 voisins, celui dont la distance est la plus petite : suivre la pente mène par le plus court chemin à l'origine de la carte. Avec <code>ignoreWalls</code>, les murs ne coûtent rien, ce qui sert à préparer une démolition (<code>goThrough</code>).</p>
+    <p>La fonction renvoyée par <code>aiThink</code> applique des priorités, de la plus urgente à la moins urgente :</p>
+<pre><code>myD = bfs(depuis moi)
+1. respirer : zone la plus proche (le ver pénalise de +12 une zone
+   que le poisson atteint avant lui, tant que air &gt; 0.25)
+   besoin = (distance * 0.28 + 2) / 30 * (1.25 confirmé | 1.6 débutant)
+   si air &lt; besoin : descendre vers la zone
+   dans la zone : rester jusqu'à 0.95 (confirmé) ou 0.85 (débutant)
+2. débutant : 18 % de coups au hasard
+3. bonus proche : poisson si à 3 cases ou moins ; ver si à 6 cases
+   ou moins et le poisson à plus de distance + 3
+4. poisson : chasser ; ver : fuir</code></pre>
+    <p><b>La chasse</b> : le poisson calcule un BFS depuis le ver et descend la pente. Le niveau confirmé vise la case où le ver se rend (<code>nx, ny</code>), le débutant celle qu'il quitte. Si le chemin réel est bloqué, ou s'il est plus long de 6 cases que le chemin à travers les murs, et qu'il a un pétard, il passe par <code>goThrough</code> et fait sauter le mur devant lui. Sans pétard et bloqué, il va en chercher un.</p>
+    <p><b>La fuite</b> (<code>flee</code>) : le ver note chaque voisin, et l'option rester sur place. Le score vaut 4 fois la distance BFS du poisson à cette case, moins 500 si le poisson y est à 1 case ou moins, moins 3 pour l'immobilité, plus un peu de bruit (3 en débutant, 0,5 en confirmé). Le niveau confirmé ajoute une mesure de territoire, proche d'un diagramme de Voronoï : il fait un BFS depuis la case candidate et compte les cases qu'il atteindrait avant le poisson (<code>md * ratio + 1 &lt; fd</code>). Le ver préfère ainsi les grands espaces aux culs-de-sac. Enfin, il pose un mur derrière lui si le poisson le suit à 2 à 4 cases, et fait sauter le mur qui se trouve devant lui (s'il a un pétard) quand le poisson est à 3 cases ou moins.</p>
+
+    <table>
+      <tr><th>En chiffres</th><th>Débutant</th><th>Confirmé</th></tr>
+      <tr><td>Coups au hasard</td><td>18 %</td><td>0 %</td></tr>
+      <tr><td>Marge de sécurité pour l'air</td><td>x 1,6</td><td>x 1,25</td></tr>
+      <tr><td>Quitte la zone à bulles à</td><td>85 % d'air</td><td>95 % d'air</td></tr>
+      <tr><td>Cible du poisson</td><td>case quittée par le ver</td><td>case visée par le ver</td></tr>
+      <tr><td>Fuite du ver</td><td>distance seule, bruit 3</td><td>distance + territoire, bruit 0,5</td></tr>
+      <tr><td>BFS par décision (ver)</td><td>2 en général</td><td>7 en général</td></tr>
+    </table>
+
+    <h2>Pourquoi ce choix</h2>
+    <p>Le terrain est petit (273 cases) et les murs changent sans arrêt : recalculer un BFS à chaque décision coûte quelques microsecondes et donne toujours des chemins exacts, sans structure à tenir à jour. Comme une décision n'est prise qu'une fois par case, soit environ 3,6 fois par seconde, même les 7 BFS du ver confirmé ne pèsent rien sur le fil principal du navigateur.</p>
+    <p>Un A* n'apporterait rien ici : une carte de distances sert à la fois à trouver le chemin, à comparer les zones à bulles et à mesurer le territoire. Les priorités fixes (air, bonus, chasse) sont simples à lire et à régler, et reproduisent le comportement d'un joueur humain de l'époque plutôt qu'un adversaire parfait. Les deux niveaux jouent sur des leviers lisibles : hasard, prudence, anticipation.</p>
+    <p>Le compromis : l'ordinateur ne prévoit pas les coups de l'adversaire. À vitesse égale, le poisson qui se contente de suivre la pente ne rattrape le ver que lorsque celui-ci se coince ou va respirer ; c'est le manque d'air, plus que la chasse, qui crée les occasions.</p>
+
+    <h2>Comment l'améliorer</h2>
+    <ol>
+      <li><b>Un poisson qui coupe le territoire.</b> Aujourd'hui le poisson ne construit jamais de mur et poursuit le ver en ligne droite. Il pourrait réutiliser le calcul de territoire de <code>flee</code> : choisir la case qui <em>réduit</em> le plus l'espace du ver, poser un mur quand cela coupe le bassin en deux, ou guetter la zone à bulles que le ver devra rejoindre quand son air baisse (son air est visible dans l'état). Effort : moyen, dans la branche <code>me.kind === 'fish'</code> de <code>aiThink</code>.</li>
+      <li><b>Corriger les cas limites de la respiration.</b> Quand toutes les zones sont murées, <code>goThrough</code> vise toujours <code>ZONES[0]</code> au lieu de la zone la plus proche à travers les murs, et sans pétard il renvoie -2, donc l'animal continue sa route et finit par étouffer. Il faudrait prendre la zone de plus petite distance dans <code>bfs(..., true)</code> et, sans charge, aller chercher le pétard. Effort : faible, dans le bloc « zones walled off » de <code>aiThink</code>.</li>
+      <li><b>Graine déterministe et pas fixe.</b> <code>newRound</code> reçoit déjà son générateur <code>rng</code>, mais <code>game.js</code> lui passe <code>Math.random</code>, et <code>dt</code> dépend du rythme d'affichage. Un petit générateur à graine (mulberry32 par exemple) et un accumulateur à pas fixe (0,02 s) dans <code>update</code> rendraient les parties rejouables à l'identique : utile pour des tests automatiques IA contre IA et pour régler les niveaux. Effort : faible.</li>
+      <li><b>Une table de niveaux et un troisième niveau.</b> Les réglages sont dispersés (0,18, 1,6/1,25, 0,85/0,95, bruit 3/0,5, territoire oui/non). Les rassembler dans un objet par niveau, dans <code>newBrain</code>, permettrait d'ajouter un niveau « expert » (poisson du point 1, ver qui anticipe d'une case la réponse du poisson) et de régler la difficulté en faisant jouer l'ordinateur contre lui-même. Effort : faible à moyen.</li>
+      <li><b>Moins de prévisibilité.</b> <code>downhill</code> garde le premier voisin à égalité, dans l'ordre haut, droite, bas, gauche : à distance égale, le poisson préfère toujours monter. Tirer au hasard parmi les ex aequo, ou préférer garder sa direction, donnerait des trajectoires plus naturelles. Effort : très faible.</li>
+      <li><b>Recherche à faible profondeur pour le ver confirmé.</b> Une recherche minimax de 2 ou 3 cases (ver, puis poisson, puis ver), avec le territoire comme évaluation, éviterait les pièges que la note d'une seule case ne voit pas. Avec 5 coups par animal, cela reste quelques centaines de BFS par décision, encore supportable. Effort : moyen, dans <code>flee</code>.</li>
+    </ol>
+
+    <div class="nav"><a href="./">▶ Jouer à KevGame</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+  </div>
+</div>
+</body>
+</html>

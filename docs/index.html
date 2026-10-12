@@ -4,27 +4,151 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LehcimGames</title>
-<meta name="description" content="Les jeux de Lehcim Noil (Windows 3.x, 1999-2006), jouables directement dans le navigateur.">
+<meta name="description" content="Les sept jeux gratuits de Lehcim Noil pour Windows 3.x (1999-2006), réécrits en JavaScript et jouables directement dans le navigateur.">
 <link rel="stylesheet" href="common/style.css">
+<style>
+  .hero { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; }
+  .hero h1 { margin-bottom: 0; }
+  .toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; padding: 0; list-style: none; }
+  .toc a { display: inline-block; background: var(--panel); color: var(--ink); text-decoration: none; border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi); padding: 2px 10px; }
+  .game { display: grid; grid-template-columns: 300px 1fr; gap: 6px 22px; margin: 28px 0 0; padding-top: 18px; border-top: 2px solid var(--panel-lo); scroll-margin-top: 12px; }
+  .game h2 { grid-column: 1 / -1; border: 0; margin: 0; padding: 0; font-size: 22px; }
+  .game h2 small { font-size: 14px; color: #333; font-weight: normal; }
+  .game .pic img { width: 100%; display: block; }
+  .game .pic .nav { margin-top: 10px; }
+  .game .pic .nav a:first-child { font-weight: bold; }
+  .game p { margin: 0 0 8px; }
+  .game dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0 0; }
+  .game dt { font-weight: bold; }
+  .game dd { margin: 0; }
+  @media (max-width: 700px) { .game { grid-template-columns: 1fr; } }
+</style>
 </head>
 <body>
 <div class="window">
-  <div class="titlebar"><span>LehcimGames</span><span class="grow"></span><span>Lehcim Noil</span></div>
-  <div class="toolbar"><span>Les jeux gratuits de Lehcim Noil, portés de Windows 3.x vers le navigateur, avec leurs graphismes et leurs sons d'origine.</span></div>
+  <div class="titlebar"><span>LehcimGames</span><span class="grow"></span><span>Les jeux de Lehcim Noil</span></div>
+  <div class="article">
+    <div class="hero">
+      <h1>Les jeux de Lehcim Noil</h1>
+      <span>Sept jeux gratuits pour Windows 3.x (1999-2006), de retour dans le navigateur.</span>
+    </div>
+    <p class="lead">Lehcim Noil a créé ces jeux au tournant des années 2000 et les distribuait gratuitement sur son site, <i>lehcim.flashyland.com</i>. Ils ne fonctionnent plus sur les ordinateurs actuels : ce sont des programmes 16 bits pour Windows 3.x, en 256 couleurs et 640x480. Ils ont donc été réécrits en JavaScript, avec leurs graphismes, leurs sons et leurs musiques d'origine, extraits des fichiers originaux. Aucune installation : il suffit de cliquer sur <b>Jouer</b>.</p>
 
-  <div class="grid">
-    <a class="card" href="agora/"><div class="thumb" style="background-image:url(thumbs/agora.png)"></div><h3>Agora</h3><p>Jeu de stratégie à piles : prises, prisonniers et révolutions. Contre l'ordinateur.</p></a>
-    <a class="card" href="awele/"><div class="thumb" style="background-image:url(thumbs/awele.png)"></div><h3>Awélé</h3><p>Le jeu de semailles africain, en mode normal ou tournoi. Contre l'ordinateur.</p></a>
-    <a class="card" href="colorsmix/"><div class="thumb" style="background-image:url(thumbs/colorsmix.png)"></div><h3>Colours-MIX</h3><p>Course de globules et mélange de couleurs. 1 ou 2 joueurs.</p></a>
-    <a class="card" href="kevgame/"><div class="thumb" style="background-image:url(thumbs/kevgame.png)"></div><h3>KevGame</h3><p>Le poisson chasse le ver dans la piscine. 1 ou 2 joueurs.</p></a>
-    <a class="card" href="labraph/"><div class="thumb" style="background-image:url(thumbs/labraph.png)"></div><h3>LabRaph</h3><p>Labyrinthes, globules jaunes et serpents rouges. Meilleurs scores.</p></a>
-    <a class="card" href="morpion/"><div class="thumb" style="background-image:url(thumbs/morpion.png)"></div><h3>Morpion</h3><p>Aligne 5 billes pour marquer des points. Contre l'ordinateur.</p></a>
-    <a class="card" href="stack/"><div class="thumb" style="background-image:url(thumbs/stack.png)"></div><h3>Stack</h3><p>Oriente les billes qui tombent pour protéger la "chose". Meilleurs scores.</p></a>
+    <ul class="toc">
+      <li><a href="#agora">Agora</a></li>
+      <li><a href="#awele">Awélé</a></li>
+      <li><a href="#colorsmix">Colours-MIX</a></li>
+      <li><a href="#kevgame">KevGame</a></li>
+      <li><a href="#labraph">LabRaph</a></li>
+      <li><a href="#morpion">Morpion</a></li>
+      <li><a href="#stack">Stack</a></li>
+    </ul>
+
+    <section class="game" id="agora">
+      <h2>Agora <small>stratégie, contre l'ordinateur</small></h2>
+      <div class="pic"><a href="agora/"><img class="shot" src="thumbs/agora.png" alt="Plateau d'Agora en bois vu en perspective"></a>
+        <div class="nav"><a href="agora/">▶ Jouer</a><a href="agora/algorithme.html">L'algorithme</a></div></div>
+      <div>
+        <p>Adaptation du jeu de société <i>Agora</i>, édité avec plateau et pièces en hêtre rose et tilleul par la société Strate J. Sur un plateau de 6x6 cases, chaque joueur déplace le pion du dessus d'une de ses piles vers une case voisine. On peut <b>prendre</b> une pile adverse moins haute (ses pièces sont retournées et changent de couleur) ou se constituer <b>prisonnier</b> sous une pile plus haute. Quand les prisonniers deviennent majoritaires, c'est la <b>révolution</b> : la pile change de camp.</p>
+        <p>Le gagnant est celui dont l'adversaire ne peut plus jouer. Le plateau en 3D se tourne et s'incline avec les flèches, comme dans l'original.</p>
+        <dl>
+          <dt>Joueurs</dt><dd>1 joueur contre l'ordinateur, 3 niveaux</dd>
+          <dt>Commandes</dt><dd>souris : bouton gauche pour déplacer ou prendre, bouton droit (ou bouton « Prisonnier ») pour se constituer prisonnier</dd>
+          <dt>En plus</dt><dd>« Nouvelle position » pour placer soi-même les 16 pièces de départ</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="game" id="awele">
+      <h2>Awélé <small>jeu de semailles, contre l'ordinateur</small></h2>
+      <div class="pic"><a href="awele/"><img class="shot" src="thumbs/awele.png" alt="Plateau d'Awélé avec ses graines"></a>
+        <div class="nav"><a href="awele/">▶ Jouer</a><a href="awele/algorithme.html">L'algorithme</a></div></div>
+      <div>
+        <p>Le grand classique africain de la famille des mancalas. Chaque joueur possède 6 cases. À son tour, il prend toutes les graines d'une case et les sème une à une dans le sens inverse des aiguilles d'une montre. Si la dernière graine tombe chez l'adversaire dans une case qui en contient alors 2 ou 3, il les ramasse, ainsi que celles des cases précédentes dans le même cas. Le premier à dépasser 24 graines a gagné.</p>
+        <p>Deux jeux de règles sont proposés : les règles usuelles et les règles de tournoi (prise totale autorisée, famine). Les parties de la session sont enregistrées au format du fichier <i>AwParties.txt</i> d'origine et peuvent être téléchargées.</p>
+        <dl>
+          <dt>Joueurs</dt><dd>1 joueur contre l'ordinateur, 5 niveaux</dd>
+          <dt>Commandes</dt><dd>souris ou toucher : cliquer une de ses 6 cases</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="game" id="colorsmix">
+      <h2>Colours-MIX <small>réflexion et rapidité, 1 ou 2 joueurs</small></h2>
+      <div class="pic"><a href="colorsmix/"><img class="shot" src="thumbs/colorsmix.png" alt="Damier coloré de Colours-MIX"></a>
+        <div class="nav"><a href="colorsmix/">▶ Jouer</a><a href="colorsmix/algorithme.html">L'algorithme</a></div></div>
+      <div>
+        <p>Un globule gris se promène au hasard sur un damier coloré, mais il ne peut passer que sur une case de sa couleur ou sur une case noire. Le globule <b>rouge</b> veut l'amener dans la zone noire du haut ou du bas, le globule <b>jaune</b> dans celle de gauche ou de droite.</p>
+        <p>Chacun son tour, pendant un temps limité, les deux joueurs traversent le damier en repeignant les cases avec leur « couleur d'application », pour ouvrir un chemin au globule gris vers leur but. La partie se joue en deux manches ; à une manche partout, le plus rapide l'emporte.</p>
+        <dl>
+          <dt>Joueurs</dt><dd>1 joueur (l'ordinateur dirige le rouge) ou 2 joueurs, 2 niveaux</dd>
+          <dt>Commandes</dt><dd>rouge : <kbd>Q</kbd> <kbd>Z</kbd> <kbd>S</kbd> <kbd>D</kbd>, <kbd>2</kbd> couleur, <kbd>1</kbd> traversée ; jaune : flèches, <kbd>Entrée</kbd> couleur, <kbd>Espace</kbd> traversée ; souris et toucher acceptés</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="game" id="kevgame">
+      <h2>KevGame <small>course-poursuite, 1 ou 2 joueurs</small></h2>
+      <div class="pic"><a href="kevgame/"><img class="shot" src="thumbs/kevgame.png" alt="La piscine de KevGame"></a>
+        <div class="nav"><a href="kevgame/">▶ Jouer</a><a href="kevgame/algorithme.html">L'algorithme</a></div></div>
+      <div>
+        <p>Dans une piscine, le <b>poisson</b> doit attraper le <b>ver</b> en moins de 90 secondes. Les deux doivent aussi remonter respirer dans les zones à bulles avant de manquer d'air. Une bouée clignotante permet de construire des murs de bouées et de ballons derrière soi, et un pétard permet de démolir les murs devant soi.</p>
+        <p>Chaque joueur est tour à tour le poisson puis le ver ; si chacun gagne une manche, le plus rapide remporte la partie. Conçu par Lehcim Noil et Nivek, avec la musique d'origine.</p>
+        <dl>
+          <dt>Joueurs</dt><dd>1 joueur contre l'ordinateur (2 niveaux) ou 2 joueurs sur le même clavier</dd>
+          <dt>Commandes</dt><dd>gauche : <kbd>Z</kbd> <kbd>Q</kbd> <kbd>S</kbd> <kbd>D</kbd> (ou <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>), mur <kbd>1</kbd>, démolition <kbd>2</kbd> ; droite : flèches, mur <kbd>Espace</kbd>, démolition <kbd>Alt Gr</kbd> ou <kbd>Entrée</kbd></dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="game" id="labraph">
+      <h2>LabRaph <small>action dans un labyrinthe, meilleurs scores</small></h2>
+      <div class="pic"><a href="labraph/"><img class="shot" src="thumbs/labraph.png" alt="Un labyrinthe de LabRaph"></a>
+        <div class="nav"><a href="labraph/">▶ Jouer</a><a href="labraph/algorithme.html">L'algorithme</a></div></div>
+      <div>
+        <p>À chaque niveau, il faut détruire tous les globules jaunes du labyrinthe puis en sortir avant la fin du temps. Un globule détruit au contact rapporte 2 points, par balle 1 point. Attention aux serpents rouges, qui volent par-dessus les murs pour te poursuivre, et aux oeufs qui s'ouvrent quand on s'approche.</p>
+        <p>Aucun globule ne doit s'échapper avant toi : une barrière de 3 secondes peut bloquer la sortie une fois par niveau. Pendant les 20 dernières secondes, le labyrinthe devient invisible. Les labyrinthes sont différents à chaque partie et de plus en plus grands.</p>
+        <dl>
+          <dt>Joueurs</dt><dd>1 joueur, tableau des 5 meilleurs scores</dd>
+          <dt>Commandes</dt><dd>flèches, <kbd>Espace</kbd> tir, <kbd>Entrée</kbd> barrière, <kbd>W</kbd> + flèches pour pivoter sur place ; pavé tactile à l'écran sur mobile</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="game" id="morpion">
+      <h2>Morpion <small>alignement, contre l'ordinateur</small></h2>
+      <div class="pic"><a href="morpion/"><img class="shot" src="thumbs/morpion.png" alt="Damier de Morpion avec des billes"></a>
+        <div class="nav"><a href="morpion/">▶ Jouer</a><a href="morpion/algorithme.html">L'algorithme</a></div></div>
+      <div>
+        <p>Chacun à son tour pose une bille sur le damier. Chaque alignement de <b>5 billes</b> de sa couleur, horizontal, vertical ou en diagonale, rapporte un point et se raye d'un trait rouge. La partie s'arrête toute seule quand plus personne ne peut aligner 5 billes ; le plus grand nombre de points l'emporte.</p>
+        <p>Le damier va de 8x8 à 15x15. Pendant que l'ordinateur réfléchit, le pendule s'agite et il est impossible d'abandonner : « Reste calme... »</p>
+        <dl>
+          <dt>Joueurs</dt><dd>1 joueur contre l'ordinateur, 5 niveaux de réflexion</dd>
+          <dt>Commandes</dt><dd>souris ou toucher : cliquer une case libre</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="game" id="stack">
+      <h2>Stack <small>arcade, meilleurs scores</small></h2>
+      <div class="pic"><a href="stack/"><img class="shot" src="thumbs/stack.png" alt="Le plateau de Stack"></a>
+        <div class="nav"><a href="stack/">▶ Jouer</a><a href="stack/algorithme.html">L'algorithme</a></div></div>
+      <div>
+        <p>Des billes de couleur apparaissent et tombent sur le plateau. En déplaçant les « portes » (les pyramides de pierre), tu orientes leur rebond pour protéger la « chose » qui rampe de droite à gauche. Deux billes de même couleur qui se rencontrent disparaissent et libèrent de la place.</p>
+        <p>Chaque nouvelle bille rapporte un point, tant que la chose est intacte ; elle n'a que trois vies. Plus le niveau monte, plus les billes sont nombreuses, rapides et variées. Avec la musique d'origine.</p>
+        <dl>
+          <dt>Joueurs</dt><dd>1 joueur, 5 niveaux de départ, tableau des 5 meilleurs scores</dd>
+          <dt>Commandes</dt><dd>clic à gauche ou à droite d'une porte pour la faire glisser, <kbd>Espace</kbd> pour faire accélérer la chose, <kbd>P</kbd> pause</dd>
+        </dl>
+      </div>
+    </section>
+
+    <h2>À propos de ces versions</h2>
+    <p>Le code source d'origine n'existe plus : seuls les programmes Windows ont été conservés. Ces versions sont donc des <b>réécritures</b>, pas des émulations. Les règles viennent des aides intégrées aux jeux originaux. Quand elles ne disaient pas tout (disposition d'un plateau, durées, détails de score, son joué à tel moment), des choix ont été faits ; ils sont indiqués dans la fenêtre « Règles » de chaque jeu.</p>
+    <p>Les pages « L'algorithme » expliquent, pour chaque jeu, ce que fait le programme (l'adversaire de l'ordinateur, la simulation, la génération des niveaux), pourquoi il a été conçu ainsi et comment on pourrait l'améliorer.</p>
+    <p>Les meilleurs scores et les réglages sont enregistrés dans ton navigateur. Le son se coupe avec le bouton « Son » de chaque jeu. Les fichiers originaux, les outils qui en extraient les images et les sons, et le code de ces versions sont dans le <a href="https://github.com/Kados/LehcimGames">dépôt GitHub</a>.</p>
+    <p>Jeux conçus par Lehcim Noil (KevGame avec Nivek, musique de Colours-MIX par Nivek). Merci à Kados et à Julien G. pour leur collaboration à Awélé.</p>
   </div>
-
-  <p class="hint">Ces jeux étaient à l'origine des programmes Windows 3.x (256 couleurs, 640x480) distribués sur http://lehcim.flashyland.com.
-  Les versions originales sont conservées dans le <a href="https://github.com/Kados/LehcimGames">dépôt GitHub</a>.
-  Les règles ont été reprises des aides d'origine ; le code a été réécrit en JavaScript.</p>
 </div>
 </body>
 </html>

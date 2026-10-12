@@ -1,24 +1,29 @@
 # Morpion
 
-Extracted from `morpion.zip`. "Morpion" is the French name for this kind of game: here a **five-in-a-row** game (gomoku-like) on a grid, played against the computer. Several board sizes (the help mentions a 10x10 board).
+Extrait de `morpion.zip`. « Morpion » est le nom français de ce type de jeu : ici, un jeu d'**alignement de cinq billes** (proche du gomoku) sur un damier, contre l'ordinateur. Plusieurs tailles de damier (l'aide mentionne un damier 10x10).
 
-## Files
+## Fichiers
 
-| File | Size | Role |
+| Fichier | Taille | Rôle |
 |---|---|---|
-| `MORPION.EXE` | 114 KB | The game (16-bit Windows 3.0 executable, Borland Pascal). It reuses Awélé's code base: its error message still says "imawpal.bmp non trouvé" even though it loads `immorpal.bmp`. |
-| `IMMORP.LIO` | 207 KB | Compressed graphics bank (RLE, 163 840 bytes once decompressed; this one is bigger compressed than raw, the RLE is inefficient on this picture). |
-| `IMMORPAL.bmp` | 1 KB | 2x2 BMP carrying the 256-colour palette for `IMMORP.LIO`. |
-| `Lisez-moi.txt` | 443 B | French readme: the exe, the `.lio` (named `immorpion.lio` in the readme, `IMMORP.LIO` in reality) and the palette must stay together. |
-| `WAVEMIX.INI`, `WAVMIX16.DLL`, `WING.DLL` | | Shared support files (see below). |
+| `MORPION.EXE` | 114 Ko | Le jeu (exécutable Windows 3.0 16 bits, Borland Pascal). Il reprend le code d'Awélé : son message d'erreur parle encore de « imawpal.bmp non trouvé » alors qu'il charge `immorpal.bmp`. |
+| `IMMORP.LIO` | 207 Ko | Banque d'images compressée (RLE, 163 840 octets une fois décompressée ; celle-ci est plus grosse compressée que brute, la compression RLE étant peu efficace sur cette image). |
+| `IMMORPAL.bmp` | 1 Ko | BMP de 2x2 pixels qui porte la palette de 256 couleurs de `IMMORP.LIO`. |
+| `Lisez-moi.txt` | 443 o | Mode d'emploi en français : l'exécutable, le `.lio` (appelé `immorpion.lio` dans le mode d'emploi, `IMMORP.LIO` en réalité) et la palette doivent rester ensemble. |
+| `WAVEMIX.INI`, `WAVMIX16.DLL`, `WING.DLL` | | Fichiers de support partagés (voir plus bas). |
 
-## Rules (summarised from the in-game help)
+## Règles (résumé de l'aide du jeu)
 
-- Each player in turn puts a marble on a square of the board (mouse click).
-- A player scores a point each time they line up **5 marbles** of their colour horizontally, vertically or diagonally.
-- The game stops automatically when neither player can progress any more; the winner has the most points.
-- You choose who starts. You cannot give up while the computer is thinking.
+- Chaque joueur dépose à son tour une bille sur une case du damier (clic de souris).
+- Un joueur marque un point chaque fois qu'il aligne **5 billes** de sa couleur, horizontalement, verticalement ou en diagonale.
+- Le jeu s'arrête automatiquement quand aucun des deux joueurs ne peut plus progresser ; le gagnant est celui qui a le plus de points.
+- On choisit qui commence. Il est impossible d'abandonner pendant que l'ordinateur réfléchit.
 
-## Shared support files
+## Version navigateur
 
-`WING.DLL`, `WAVMIX16.DLL` and `WAVEMIX.INI` are the Microsoft WinG graphics library, the Microsoft WaveMix sound mixing library and its configuration file. They are identical in every game; see the [root README](../README.md#files-common-to-every-game).
+- Jouer : [`docs/morpion/`](../docs/morpion/) (en ligne : `https://kados.github.io/LehcimGames/morpion/` une fois GitHub Pages activé)
+- Comment fonctionne l'algorithme, pourquoi, et comment l'améliorer : [`docs/morpion/algorithme.html`](../docs/morpion/algorithme.html)
+
+## Fichiers de support partagés
+
+`WING.DLL`, `WAVMIX16.DLL` et `WAVEMIX.INI` sont la bibliothèque graphique WinG de Microsoft, la bibliothèque de mixage sonore WaveMix de Microsoft et son fichier de configuration. Ils sont identiques dans tous les jeux ; voir le [README principal](../README.md#fichiers-communs-à-tous-les-jeux).

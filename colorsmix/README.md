@@ -1,25 +1,30 @@
 # Colours-MIX
 
-Extracted from `coloursmix.zip` (the folder is named `colorsmix`). Real-time colour puzzle race between a **red** and a **yellow** "globule" (blob). Version 2: adds a 1-player mode where the computer controls the red globule (version 1 was 2 players only). Design: Lehcim Noil, music: Nivek.
+Extrait de `coloursmix.zip` (le dossier s'appelle `colorsmix`). Course de couleurs en temps réel entre un « globule » **rouge** et un globule **jaune**. Version 2 : elle ajoute un mode 1 joueur où l'ordinateur dirige le globule rouge (la version 1 se jouait seulement à 2). Conception : Lehcim Noil, musique : Nivek.
 
-## Files
+## Fichiers
 
-| File | Size | Role |
+| Fichier | Taille | Rôle |
 |---|---|---|
-| `Colours_MIX.exe` | 654 KB | The game (16-bit Windows 3.x executable, Borland Delphi 1). Includes the sounds. |
-| `IMCOL.LIO` | 213 KB | Compressed graphics bank (RLE, 385 152 bytes once decompressed). |
-| `IMCOLPAL.bmp` | 1 KB | 2x2 BMP carrying the 256-colour palette for `IMCOL.LIO`. |
-| `Lisez-moi.txt` | 540 B | French readme: `colours-MIX.exe`, `imcol.lio` and `imcolpal.bmp` must stay together; notes that version 2 allows solo play. |
-| `WAVEMIX.INI`, `WAVMIX16.DLL`, `WING.DLL` | | Shared support files (see below). |
+| `Colours_MIX.exe` | 654 Ko | Le jeu (exécutable Windows 3.x 16 bits, Borland Delphi 1). Il contient les sons. |
+| `IMCOL.LIO` | 213 Ko | Banque d'images compressée (RLE, 385 152 octets une fois décompressée). |
+| `IMCOLPAL.bmp` | 1 Ko | BMP de 2x2 pixels qui porte la palette de 256 couleurs de `IMCOL.LIO`. |
+| `Lisez-moi.txt` | 540 o | Mode d'emploi en français : `colours-MIX.exe`, `imcol.lio` et `imcolpal.bmp` doivent rester ensemble ; il précise que la version 2 permet de jouer seul. |
+| `WAVEMIX.INI`, `WAVMIX16.DLL`, `WING.DLL` | | Fichiers de support partagés (voir plus bas). |
 
-## Rules (summarised from the in-game help)
+## Règles (résumé de l'aide du jeu)
 
-- Played in 2 rounds: yellow starts the first, red the second. If each wins one round, the fastest winner takes the match.
-- A **grey globule** wanders randomly. It can only move to a square of the same colour as its current square, or to a black square.
-- Red must bring the grey globule into the top or bottom black zone; yellow must bring it into the left or right black zone.
-- In turn, each player moves through the central zone; the colours of the squares they cross change according to their chosen "application colour". Squares occupied by a globule or a pyramid are forbidden.
-- **Controls** (one player): Q / Z / S / D to move, `2` to change colour, `1` and Space for the other actions.
+- La partie se joue en 2 manches : le jaune commence la première, le rouge la seconde. Si chacun gagne une manche, le plus rapide remporte la partie.
+- Un **globule gris** se promène au hasard. Il ne peut passer que sur une case de la même couleur que la sienne, ou sur une case noire.
+- Le rouge doit amener le globule gris dans la zone noire du haut ou du bas ; le jaune dans celle de gauche ou de droite.
+- Chacun leur tour, les joueurs traversent la zone centrale ; les cases traversées changent de couleur selon la « couleur d'application » choisie. Les cases occupées par un globule ou une pyramide sont interdites.
+- **Commandes** : rouge `Q` / `Z` / `S` / `D` pour se déplacer, `2` pour changer de couleur, `1` pour traverser ; jaune : flèches, `Entrée` pour la couleur, `Espace` pour traverser.
 
-## Shared support files
+## Version navigateur
 
-`WING.DLL`, `WAVMIX16.DLL` and `WAVEMIX.INI` are the Microsoft WinG graphics library, the Microsoft WaveMix sound mixing library and its configuration file. They are identical in every game; see the [root README](../README.md#files-common-to-every-game).
+- Jouer : [`docs/colorsmix/`](../docs/colorsmix/) (en ligne : `https://kados.github.io/LehcimGames/colorsmix/` une fois GitHub Pages activé)
+- Comment fonctionne l'algorithme, pourquoi, et comment l'améliorer : [`docs/colorsmix/algorithme.html`](../docs/colorsmix/algorithme.html)
+
+## Fichiers de support partagés
+
+`WING.DLL`, `WAVMIX16.DLL` et `WAVEMIX.INI` sont la bibliothèque graphique WinG de Microsoft, la bibliothèque de mixage sonore WaveMix de Microsoft et son fichier de configuration. Ils sont identiques dans tous les jeux ; voir le [README principal](../README.md#fichiers-communs-à-tous-les-jeux).

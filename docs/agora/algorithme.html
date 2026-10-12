@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agora : l'algorithme - LehcimGames</title>
+<link rel="stylesheet" href="../common/style.css">
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>Agora : l'algorithme</span></div>
+  <div class="article">
+    <h1>Agora : comment fonctionne l'algorithme</h1>
+    <p class="lead">L'ordinateur d'Agora est un joueur alpha-bêta classique (négamax) avec approfondissement itératif et limite de temps, qui s'appuie sur un moteur de règles très compact où chaque case n'est décrite que par trois petits nombres. A côté, le plateau en 3D est dessiné « à la main » sur un canvas 2D : projection en perspective, algorithme du peintre, textures plaquées par triangles et sélection à la souris par test de polygones.</p>
+
+    <h2>Ce que fait l'algorithme</h2>
+
+    <h3>Le moteur de règles (<code>rules.js</code>)</h3>
+    <p>Le plateau fait 6 x 6 cases (indice = <code>ligne*6 + colonne</code>). Grâce aux règles, une pile ne contient jamais plus de deux tranches : en haut les pièces qui la contrôlent, en dessous les prisonniers adverses, et les contrôleurs sont toujours au moins aussi nombreux. Le code en profite : une position (<code>Pos</code>) n'est que trois tableaux <code>Int8Array</code> de 36 cases, <code>col</code> (couleur du dessus, -1 si vide), <code>top</code> (nombre de contrôleurs) et <code>bot</code> (nombre de prisonniers), plus <code>side</code>, le camp au trait.</p>
+    <p>Un coup est un simple entier : <code>from | to &lt;&lt; 6 | kind &lt;&lt; 12</code>, avec quatre sortes de coups : <code>SIMPLE</code>, <code>STACK</code> (empilement d'un pion isolé, qui ne touche qu'un seul pion de sa couleur), <code>CAPTURE</code> (hauteur de départ &gt;= hauteur visée) et <code>PRISON</code> (hauteur de départ &lt;= hauteur visée). Les voisins des 8 directions sont précalculés dans <code>NEIGH</code>. <code>moves()</code> parcourt les 36 cases et produit tous les coups légaux.</p>
+    <p><code>play()</code> joue un coup sur place en deux étapes : le pion quitte sa pile (si les prisonniers y deviennent majoritaires, les pions restants sont retournés), puis il arrive sur la cible (une prise retourne toute la pile, un prisonnier glisse dessous et déclenche « la révolution » s'il devient majoritaire). Il renvoie un petit tableau de 8 valeurs qui suffit à <code>undo()</code> pour revenir en arrière : la recherche ne copie donc jamais la position.</p>
+
+    <h3>Le joueur artificiel : alpha-bêta</h3>
+    <p><code>think(p, level)</code> lance un <b>approfondissement itératif</b> : profondeur 1, puis 2, 3... jusqu'à <code>depthMax</code> ou jusqu'à épuisement du temps. A chaque itération, le meilleur coup trouvé est remis en tête de liste pour être exploré en premier à l'itération suivante, ce qui rend l'élagage plus efficace. Si une itération est interrompue avant d'avoir trouvé un coup, on garde le résultat de la précédente. La recherche s'arrête aussi dès qu'un gain forcé est vu (<code>alpha &gt; WIN / 2</code>).</p>
+    <p>En dessous de la racine, <code>Search.prototype.ab</code> est un négamax alpha-bêta. Un camp qui n'a plus aucun coup a perdu : le score vaut <code>-WIN + ply</code> (<code>WIN = 100000</code>), ce qui fait préférer les victoires rapides et les défaites lentes. L'horloge n'est consultée que tous les 1024 nœuds (<code>(++nodes &amp; 1023) === 0</code>) pour rester rapide.</p>
+    <pre><code>pour d = 1 .. depthMax :
+  pour chaque coup m (le meilleur précédent d'abord) :
+    jouer m ; v = -ab(d-1, -inf, -alpha) ; annuler m
+    si temps écoulé : arrêter
+    si v &gt; alpha : alpha = v ; meilleur = m
+  remettre le meilleur en tête
+  si alpha &gt; WIN/2 : arrêter (gain trouvé)</code></pre>
+    <p>Le tri des coups (<code>order()</code>) est volontairement bon marché : les prises d'abord (score <code>3 + hauteur de la cible</code>, donc les grosses piles en premier), puis les coups prisonnier (2), puis le reste (0).</p>
+
+    <h3>La fonction d'évaluation</h3>
+    <p><code>evaluate()</code> note la position du point de vue du camp au trait. Pour chaque pile, au profit de celui qui la contrôle :</p>
+    <table>
+      <tr><th>Terme</th><th>Poids</th></tr>
+      <tr><td>chaque pion contrôleur (<code>top</code>)</td><td>+10</td></tr>
+      <tr><td>la pile elle-même (une pièce capable de bouger)</td><td>+14</td></tr>
+      <tr><td>hauteur, plafonnée à 4 (une pile haute prend plus)</td><td>+2 par étage</td></tr>
+      <tr><td>chaque prisonnier gardé sous soi (risque de révolte)</td><td>-6</td></tr>
+      <tr><td>pile fragile (<code>top - bot &lt;= 1</code> avec des prisonniers)</td><td>-4</td></tr>
+      <tr><td>chaque prisonnier, compté pour son propriétaire</td><td>+4</td></tr>
+      <tr><td>mobilité : (mes coups - coups adverses)</td><td>x 2</td></tr>
+    </table>
+    <p>Le +14 par pile est un point clé : avoir plusieurs piles mobiles vaut plus qu'une seule tour, car on perd quand on ne peut plus bouger.</p>
+
+    <h3>Les niveaux</h3>
+    <table>
+      <tr><th>Niveau</th><th>Profondeur max</th><th>Temps max</th><th>Hasard</th></tr>
+      <tr><td>1</td><td>2</td><td>150 ms</td><td>tirage parmi les coups à 12 points ou moins du meilleur</td></tr>
+      <tr><td>2</td><td>4</td><td>450 ms</td><td>aucun</td></tr>
+      <tr><td>3</td><td>9</td><td>900 ms</td><td>aucun</td></tr>
+    </table>
+    <p>Côté partie (<code>game.js</code>), <code>nextTurn()</code> appelle <code>R.think()</code> dans un <code>setTimeout</code> de 60 ms pour laisser le message « L'ordinateur réfléchit... » s'afficher, puis anime le coup. La partie est nulle après trois répétitions de la même position (clé <code>Pos.key()</code>) ou 400 coups.</p>
+
+    <h3>Algorithme secondaire : la 3D faite main et la sélection à la souris</h3>
+    <p>Il n'y a ni WebGL ni bibliothèque 3D. La caméra tourne autour du plateau : <code>setupCamera()</code> place l'œil à la distance 13, avec un angle horizontal (<code>yaw</code>, -25° au départ, par pas de 15°) et une inclinaison (<code>pitch</code>, 48° au départ, entre 18° et 89°), visant le point (0, -0.3, 0). Les angles suivent leur cible en douceur (20 % de l'écart par image). <code>proj()</code> exprime un point dans le repère de la caméra (<code>right</code>, <code>up</code>, <code>fwd</code>) puis divise par la profondeur : <code>x = 320 + 570 * cx / cz</code>, <code>y = 198 - 570 * cy / cz</code>. C'est une projection en perspective classique, avec une focale de 570 pixels.</p>
+    <p>Chaque pion est une boîte (demi-côté <code>PS = 0.39</code>, épaisseur <code>PH = 0.17</code>). <code>drawBox()</code> ne dessine que les faces tournées vers l'œil (<code>faceVisible()</code>), choisit une texture plus ou moins sombre selon l'orientation par rapport à une lumière fixe (<code>shade()</code>), puis le dessus. L'ordre d'affichage suit <b>l'algorithme du peintre</b> : les 36 colonnes (et les pièces en mouvement) sont triées de la plus lointaine à la plus proche. Le placage de texture se fait dans <code>texTri()</code> : chaque quadrilatère est coupé en deux triangles, on calcule la transformation affine qui envoie le triangle de l'image source sur le triangle projeté, on la passe à <code>ctx.setTransform()</code> et on découpe (<code>clip</code>) un triangle agrandi de 0.8 pixel pour masquer les joints.</p>
+    <p>Pour la souris, chaque image remplit <code>pickCols</code> avec les colonnes de la plus proche à la plus lointaine. <code>pick()</code> teste pour chacune d'abord la case au sol projetée, puis l'enveloppe convexe (<code>hull()</code>, chaîne monotone) des faces haute et basse de la pile, avec un test de point dans un polygone par lancer de rayon (<code>inPoly()</code>). La première colonne touchée gagne : une pile proche masque donc correctement ce qui est derrière elle.</p>
+
+    <h2>Pourquoi ce choix</h2>
+    <p>Agora a un facteur de branchement modéré : chaque pièce a au plus 8 voisins et, selon les hauteurs, une ou deux sortes de coups par voisin. Avec 16 pièces, on tourne autour de quelques dizaines de coups. Alpha-bêta avec un bon ordre de coups est l'approche naturelle pour ce genre de jeu à deux joueurs, à information complète et sans hasard.</p>
+    <p>La représentation en trois tableaux de 36 octets et les coups codés en entiers permettent de jouer et annuler un coup sans aucune allocation, ce qui compte en JavaScript. L'approfondissement itératif avec limite de temps garantit que l'ordinateur répond toujours vite, quel que soit le nombre de coups possibles. Comme le calcul tourne sur le fil principal du navigateur, les limites (150 à 900 ms) restent courtes : au-delà, l'interface se figerait.</p>
+    <p>Les niveaux jouent sur la profondeur plutôt que sur une évaluation dégradée, et le niveau 1 ajoute un peu de hasard pour qu'il soit battable et moins répétitif. L'évaluation, simple et lisible, reflète directement les règles : pièces libres, mobilité, danger des prisonniers.</p>
+    <p>Pour l'affichage, refaire la 3D à la main sur canvas 2D permet de réutiliser les textures de bois d'origine avec un rendu proche du jeu Windows 3.x, sans WebGL. Le compromis : le placage affine par triangles déforme un peu les textures en perspective, et l'algorithme du peintre suffit ici seulement parce que les piles sont des boîtes alignées sur une grille.</p>
+
+    <h2>Comment l'améliorer</h2>
+    <ol>
+      <li><b>Table de transposition avec hachage de Zobrist.</b> Les mêmes positions reviennent souvent par des ordres de coups différents. Un hachage incrémental (une clé par case et par triplet couleur/top/bot, mis à jour dans <code>play()</code> et <code>undo()</code>) et une table qui mémorise profondeur, score, borne et meilleur coup éviteraient de les recalculer et amélioreraient l'ordre des coups. Gain probable : une ou deux profondeurs de plus au niveau 3. Effort : moyen, dans <code>rules.js</code> autour de <code>Search.prototype.ab</code>.</li>
+      <li><b>Recherche dans un Web Worker.</b> <code>rules.js</code> n'utilise pas le DOM : il peut être chargé tel quel dans un worker. <code>nextTurn()</code> enverrait la position et recevrait le coup. L'interface resterait fluide (caméra, animations) et on pourrait donner 2 ou 3 secondes au niveau 3. Effort : faible.</li>
+      <li><b>Meilleur ordre des coups et recherche de quiescence.</b> Ajouter les coups « killer » et l'heuristique d'historique dans <code>order()</code>, et, aux feuilles, continuer à explorer les prises et les révolutions au lieu de s'arrêter net : cela réduit l'effet d'horizon, très présent ici car une révolution retourne une pile entière d'un coup. Effort : moyen.</li>
+      <li><b>Evaluation moins coûteuse.</b> A chaque feuille, <code>ab()</code> génère les coups puis <code>evaluate()</code> les régénère deux fois pour la mobilité. Réutiliser la liste déjà calculée, ou compter la mobilité sans construire de tableau, accélérerait sensiblement la recherche. Effort : faible.</li>
+      <li><b>Connaître la règle de nulle.</b> La recherche ignore la répétition triple et la limite de 400 coups, gérées seulement dans <code>game.js</code>. Passer l'historique à <code>think()</code> et rendre 0 sur une position déjà vue éviterait des tournages en rond. Effort : faible.</li>
+      <li><b>Régler les poids par auto-jeu.</b> Les poids (10, 14, 2, 6, 4, 4, 2) sont faits à la main. Comme <code>rules.js</code> tourne sous Node, on peut faire jouer des milliers de parties entre deux jeux de poids et garder le meilleur. Un générateur aléatoire à graine pour le hasard du niveau 1 rendrait aussi ces tests reproductibles. Effort : moyen.</li>
+    </ol>
+    <div class="callout">En résumé : un alpha-bêta propre et rapide sur une représentation très compacte. Les gains les plus rentables sont la table de transposition, le passage en Web Worker et un meilleur traitement des prises en fin de recherche.</div>
+
+    <div class="nav"><a href="./">▶ Jouer à Agora</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+  </div>
+</div>
+</body>
+</html>

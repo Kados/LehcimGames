@@ -46,3 +46,23 @@ kbd { background: #fff; color: #000; border: 1px solid var(--panel-lo); padding:
 .card h3 { margin: 0; padding: 6px 10px 0; font-size: 16px; color: var(--title); }
 .card p { margin: 0; padding: 2px 10px 10px; font-size: 13px; }
 @media (max-width: 520px) { .toolbar .status { margin-left: 0; width: 100%; } }
+
+/* Article pages (home page sections, algorithm explanations) */
+.article { background: var(--panel); color: var(--ink); border: 2px solid var(--panel); border-top: 0; padding: 8px 24px 20px; }
+.article h1 { font-size: 24px; color: var(--title); margin: 12px 0 4px; }
+.article h2 { font-size: 19px; color: var(--title); margin: 24px 0 6px; border-bottom: 1px solid var(--panel-lo); padding-bottom: 2px; }
+.article h3 { font-size: 16px; margin: 16px 0 4px; }
+.article p, .article li { max-width: 78ch; }
+.article a { color: #00007a; }
+.article .lead { font-size: 16px; }
+.article pre { background: #fff; border: 1px solid var(--panel-lo); padding: 8px 12px; overflow-x: auto; font-size: 13px; line-height: 1.35; }
+.article code { font-family: Consolas, "Courier New", monospace; font-size: 13px; }
+.article p code, .article li code { background: #fff; padding: 0 3px; border: 1px solid #d0d0d0; }
+.article table { border-collapse: collapse; margin: 8px 0; background: #fff; }
+.article th, .article td { border: 1px solid var(--panel-lo); padding: 4px 8px; text-align: left; vertical-align: top; }
+.article th { background: #e4e4e4; }
+.article .callout { background: #ffffe1; border: 1px solid #b8b860; padding: 8px 12px; margin: 12px 0; }
+.article .nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+.article .nav a { display: inline-block; background: var(--panel); color: var(--ink); text-decoration: none; border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi); padding: 2px 10px; }
+.article img.shot { max-width: 100%; border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo); image-rendering: pixelated; }
+@media (max-width: 520px) { .article { padding: 4px 12px 16px; } }

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Morpion : l'algorithme - LehcimGames</title>
+<link rel="stylesheet" href="../common/style.css">
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>Morpion : l'algorithme</span></div>
+  <div class="article">
+    <h1>Morpion : comment fonctionne l'algorithme</h1>
+    <p class="lead">L'ordinateur du Morpion cherche ses coups avec un <b>negamax à élagage alpha-bêta</b>, en approfondissement itératif et limité dans le temps. Il ne regarde que les quelques cases les plus prometteuses, classées par une heuristique d'attaque et de défense, et juge les positions en comptant les segments de 5 cases encore réalisables. Tout le code est dans <code>engine.js</code>, sans dépendance.</p>
+
+    <h2>Ce que fait l'algorithme</h2>
+
+    <h3>Le moteur de règles : des « fenêtres » de 5 cases</h3>
+    <p>À la création d'une partie, <code>Game(n)</code> énumère toutes les <b>fenêtres</b> possibles : chaque segment de 5 cases dans les 4 directions (<code>DIRS</code> : horizontale, verticale, et les deux diagonales). Il y en a 96 sur le plateau 8-8, 192 sur le 10-10, 320 sur le 12-12 et 572 sur le 15-15. Pour chaque case, le moteur garde la liste des fenêtres qui la contiennent (<code>cellWins</code>) et, par direction, <code>cellDirWins</code>.</p>
+    <p>Ensuite tout est <b>incrémental</b> : <code>cnt[1][w]</code> et <code>cnt[2][w]</code> comptent les billes de chaque couleur dans la fenêtre <code>w</code>, <code>usedCnt[w]</code> le nombre de cases déjà barrées dans sa direction. Poser une bille (<code>play</code>) met à jour quelques compteurs ; si une fenêtre atteint 5 billes et n'a aucune case barrée, elle rapporte un point et <code>mark</code> barre ses cases dans cette direction. C'est ce qui donne la règle « 6 en ligne = 1 point, 10 en ligne = 2 points ». <code>undo</code> défait exactement le coup, ce qui permet à la recherche de jouer et déjouer sans copier le plateau.</p>
+    <p>Une fenêtre est <b>vivante</b> (<code>alive</code>) si elle ne contient qu'une seule couleur, aucune case barrée et au moins une case vide. La partie s'arrête (<code>over</code>) quand plus aucune fenêtre n'est vivante : c'est l'arrêt automatique de l'original.</p>
+
+    <h3>Le choix des coups candidats</h3>
+    <p><code>usefulCells</code> ne garde que les cases vides appartenant à au moins une fenêtre vivante : jouer ailleurs ne sert à rien. Chaque case reçoit ensuite une note rapide <code>cellValue</code> qui additionne, pour chaque fenêtre non barrée qui la contient :</p>
+    <ul>
+      <li>si l'adversaire n'y est pas : <code>ATT[k]</code> = [1, 5, 24, 150, 1000000] selon mes <i>k</i> billes déjà présentes (compléter un 4 vaut 1 000 000) ;</li>
+      <li>si je n'y suis pas : <code>DEF[k]</code> = [0, 4, 18, 120, 400000] selon les <i>k</i> billes adverses (bloquer un 4 vaut 400 000).</li>
+    </ul>
+    <p><code>candidates(p, k)</code> trie les cases par cette note et n'en garde que les <i>k</i> meilleures (la « largeur » du niveau). C'est un élagage brutal mais efficace : sur un 10-10, on passe d'une centaine de cases à 8-14.</p>
+
+    <h3>L'évaluation d'une position</h3>
+    <p><code>evaluate(p)</code> part de l'écart de points multiplié par <code>POINT</code> = 10 000, puis ajoute <code>VAL[k]</code> = [0, 2, 12, 70, 160] pour chaque fenêtre vivante contenant <i>k</i> billes du joueur au trait, et le retranche pour l'adversaire. Elle corrige ensuite l'horizon pour les « 4 » (une seule case manque) : comme <i>p</i> joue le prochain coup, avoir au moins un 4 vaut presque un point (+9 000, puis +5 000 par case gagnante distincte supplémentaire). Sinon, les 4 adverses ne coûtent vraiment que s'il y en a plusieurs (-8 000 par case en trop, plus une petite pénalité de 300), car un seul peut être bloqué.</p>
+
+    <h3>La recherche : negamax alpha-bêta</h3>
+    <pre><code>bestMove(p, niveau):
+  si premier coup : une des 4 cases centrales au hasard
+  racine = candidates(p, max(largeur, 8))
+  si racine[0].h &gt;= 400000 : jouer tout de suite (point ou blocage)
+  si profondeur = 0 (niveau 1) : glouton bruité
+  pour prof = 1 .. profondeur, tant qu'il reste du temps :
+    pour chaque coup de la racine : v = -negamax(prof-1, ...)
+    retrier la racine selon les scores obtenus
+  tirer au sort parmi les coups à moins de « margin » du meilleur</code></pre>
+    <p><code>negamax</code> est la version classique : à profondeur 0 on renvoie <code>evaluate</code>, et s'il n'y a plus de candidat la partie est finie et l'écart de points vaut <code>POINT * 10</code> par point. Toutes les 256 positions (<code>ctx.nodes &amp; 255</code>), le moteur regarde l'horloge et lève l'exception <code>TIMEOUT</code> si le délai est dépassé : l'itération en cours est abandonnée et on garde le meilleur coup de la précédente. À la racine, la fenêtre est resserrée à <code>alpha - margin</code> : les coups nettement moins bons sont seulement prouvés « pires », sans calcul exact.</p>
+    <p>Le hasard est dosé par niveau. Au niveau 1, pas de recherche : on prend le meilleur candidat, mais avec une probabilité de 0,7 on passe au suivant, et ainsi de suite ; même le raccourci « point immédiat ou blocage urgent » ne s'applique que 6 fois sur 10. Au niveau 2, <code>margin</code> vaut 64 au lieu de 4, donc l'ordinateur choisit au hasard parmi des coups « à peu près » aussi bons. Aux niveaux 3 à 5, il ne départage que des coups quasi équivalents.</p>
+
+    <table>
+      <tr><th>Niveau</th><th>Profondeur</th><th>Largeur</th><th>Temps max</th><th>Hasard</th></tr>
+      <tr><td>1</td><td>0 (glouton)</td><td>8</td><td>-</td><td>0,7 par rang</td></tr>
+      <tr><td>2</td><td>1</td><td>12</td><td>300 ms</td><td>marge 64</td></tr>
+      <tr><td>3</td><td>2</td><td>14</td><td>500 ms</td><td>marge 4</td></tr>
+      <tr><td>4</td><td>3</td><td>12</td><td>900 ms</td><td>marge 4</td></tr>
+      <tr><td>5</td><td>5</td><td>10</td><td>1 400 ms</td><td>marge 4</td></tr>
+    </table>
+    <p>Côté interface, <code>game.js</code> lance <code>bestMove</code> 60 ms après l'affichage de « Je réfléchis ... », puis attend que 650 ms au total se soient écoulées avant de poser la bille, pour que le coup ne tombe pas instantanément.</p>
+
+    <h2>Pourquoi ce choix</h2>
+    <p>Le Morpion a un facteur de branchement énorme : une centaine de cases libres au début sur un 10-10, plus de 200 sur un 15-15. Une recherche complète est impossible même à faible profondeur. Mais l'immense majorité de ces coups est sans intérêt : seuls comptent ceux qui prolongent ses lignes ou coupent celles de l'adversaire. La note <code>cellValue</code> capture exactement cela, et limiter la largeur à 10-14 rend un alpha-bêta de profondeur 5 faisable en JavaScript pur.</p>
+    <p>La structure en fenêtres précalculées rend <code>play</code>/<code>undo</code> très bon marché et règle proprement la subtilité des lignes barrées par direction, qui serait pénible à gérer en parcourant le plateau. La limite de temps garantit une réponse en moins de 2 secondes, alors que l'original pouvait réfléchir 1 min 40 s au niveau 5 : on gagne en confort, on perd un peu en force.</p>
+    <p>Les compromis acceptés : l'élagage par largeur peut rater un coup tranquille mais décisif ; la recherche tourne sur le fil principal du navigateur, donc l'animation du pendule se fige pendant au plus 1,4 s ; et <code>usefulCells</code> reparcourt toutes les fenêtres à chaque nœud, ce qui coûte cher sur le 15-15. Pour un jeu de salon sans compilation ni bibliothèque, c'est un bon équilibre entre simplicité, fidélité et plaisir de jeu.</p>
+
+    <h2>Comment l'améliorer</h2>
+    <ol>
+      <li><b>Déplacer la recherche dans un Web Worker.</b> <code>engine.js</code> n'utilise déjà pas le DOM et se charge sous node : il suffit d'un petit worker qui reçoit l'historique des coups, rejoue la partie et renvoie <code>bestMove</code>. L'interface reste fluide et on peut alors allonger le temps des niveaux 4 et 5. Effort : faible (une demi-journée), dans <code>computerTurn</code> de <code>game.js</code>.</li>
+      <li><b>Table de transposition avec hachage de Zobrist.</b> Dans un jeu de pose, le même ensemble de billes est atteint par beaucoup d'ordres différents : une table mémorisant valeur, profondeur et meilleur coup éviterait des recalculs massifs et donnerait un excellent coup à essayer en premier. Le hachage se met à jour dans <code>play</code>/<code>undo</code> (une clé par case et couleur, plus les cases barrées <code>used</code> qui changent les points possibles). Effort : moyen, dans <code>negamax</code>.</li>
+      <li><b>Recherche des menaces (quiescence sur les 4).</b> L'évaluation estime les 4 à la louche (+9 000, -8 000...). Prolonger la recherche au-delà de la profondeur nominale tant qu'il existe des coups qui créent ou bloquent un 4 (les cases notées au-dessus de 400 000) rendrait les fins de variante exactes et éviterait des pièges à double menace. Effort : moyen, à la branche <code>depth === 0</code> de <code>negamax</code>.</li>
+      <li><b>Candidats incrémentaux.</b> Maintenir dans <code>play</code>/<code>undo</code> la liste des cases utiles et leur note au lieu de tout recalculer dans <code>usefulCells</code> et <code>cellValue</code> à chaque nœud : plusieurs fois plus de nœuds par seconde, donc un niveau 5 plus profond, surtout en 12-12 et 15-15. Effort : moyen.</li>
+      <li><b>Meilleur ordre dans l'arbre.</b> Seule la racine est retriée entre deux itérations ; ajouter les coups « killer » et l'heuristique d'historique dans <code>negamax</code>, voire une recherche à fenêtre nulle (PVS), augmenterait les coupures alpha-bêta. Effort : faible.</li>
+      <li><b>Régler les poids par auto-jeu.</b> <code>VAL</code>, <code>ATT</code> et <code>DEF</code> ont été fixés à la main. Le moteur accepte déjà un <code>rnd</code> déterministe pour les tests : on peut faire jouer des milliers de parties sous node entre deux jeux de poids et garder le meilleur. Cela servirait aussi à vérifier que chaque niveau bat bien le précédent. Effort : moyen, sans toucher à l'interface.</li>
+    </ol>
+
+    <div class="nav"><a href="./">▶ Jouer à Morpion</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+  </div>
+</div>
+</body>
+</html>

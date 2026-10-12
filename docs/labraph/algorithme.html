@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LabRaph : l'algorithme - LehcimGames</title>
+<link rel="stylesheet" href="../common/style.css">
+</head>
+<body>
+<div class="window">
+  <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>LabRaph : l'algorithme</span></div>
+  <div class="article">
+    <h1>LabRaph : comment fonctionne l'algorithme</h1>
+    <p class="lead">LabRaph tire au hasard un labyrinthe à chaque niveau, y lâche des globules qui errent de case en case et des serpents qui foncent sur toi à vol d'oiseau. Tout tient dans <code>game.js</code> : un générateur de labyrinthe par exploration en profondeur, un parcours en largeur qui calcule la distance de chaque case à la sortie, deux comportements très simples pour les créatures, et une fonction <code>levelParams(n)</code> qui règle la difficulté.</p>
+
+    <h2>Ce que fait l'algorithme</h2>
+
+    <h3>La boucle de jeu</h3>
+    <p>La logique avance par pas fixes de <code>TICK = 50</code> ms, l'intervalle du minuteur de l'original. La fonction <code>frame</code>, appelée par <code>requestAnimationFrame</code>, accumule le temps écoulé (plafonné à 500 ms pour ne pas rattraper des secondes entières après un onglet en arrière-plan) et appelle <code>step()</code> autant de fois que nécessaire, puis dessine. Chaque pas de jeu exécute dans l'ordre :</p>
+<pre><code>updateShip()     // déplacement / rotation du vaisseau
+updateEggs()     // ouverture et éclosion des oeufs
+updateGlobs()    // errance des globules
+updateSnakes()   // poursuite des serpents
+updateBullets()  // balles, en deux demi-pas
+checkContacts()  // globule mangé (+2) ou mort par serpent
+barrière--, temps--, labyrinthe invisible à 20 s de la fin</code></pre>
+    <p>Toutes les positions sont exprimées en cases, pas en pixels. Le vaisseau et les globules se déplacent d'une case à l'autre avec un paramètre <code>t</code> qui va de 0 à 1 ; ils ne choisissent une nouvelle direction qu'au centre d'une case. Le vaisseau avance de <code>SHIP_SPEED = 0.25</code> case par pas (5 cases par seconde) et doit d'abord pivoter, chaque quart de tour durant <code>TURN_TICKS = 2</code> pas.</p>
+
+    <h3>Génération du labyrinthe</h3>
+    <p><code>makeMaze(cols, rows)</code> part d'une grille où chaque case a ses quatre murs (valeur 15 : bits 1 haut, 2 droite, 4 bas, 8 gauche). C'est l'algorithme classique du <i>recursive backtracker</i>, écrit avec une pile explicite :</p>
+<pre><code>pile = [case au hasard]
+tant que la pile n'est pas vide :
+  c = sommet de la pile
+  voisins = voisins de c pas encore visités
+  si aucun : dépiler
+  sinon : en choisir un au hasard, abattre le mur commun, l'empiler</code></pre>
+    <p>On obtient un labyrinthe parfait (un seul chemin entre deux cases), avec de longs couloirs sinueux. Pour offrir des échappatoires face aux serpents, le code abat ensuite <code>round(cols * rows * 0.08)</code> murs supplémentaires au hasard (vers la droite ou vers le bas), ce qui crée des boucles. Enfin, la sortie est percée dans le mur extérieur, en haut, en bas ou à gauche (le côté droit touche le panneau).</p>
+    <p><code>exitDistances(m)</code> fait alors un parcours en largeur depuis la case de sortie et stocke dans un <code>Int32Array</code> la distance en déplacements de chaque case à la sortie. Cette carte sert trois fois : placer le vaisseau loin de la sortie (une case tirée parmi celles à au moins 60 % de la distance maximale), interdire aux créatures les cases à moins de 4 pas de la sortie, et guider les globules.</p>
+
+    <h3>L'errance des globules</h3>
+    <p><code>chooseGlobDir(o)</code> est appelée quand un globule arrive au centre d'une case. Elle liste les directions ouvertes (la sortie compte seulement si la barrière n'est pas active), retire le demi-tour sauf en cul-de-sac, puis :</p>
+    <ul>
+      <li>avec la probabilité <code>bias</code> (0,02 par niveau, plafonnée à 0,15), le globule prend la direction qui fait baisser sa distance à la sortie dans la carte du parcours en largeur, ou sort directement s'il est sur la case de sortie ;</li>
+      <li>sinon, il choisit une direction au hasard parmi les options restantes.</li>
+    </ul>
+    <p>Au niveau 1, un globule ne suit la pente qu'à 2 % des carrefours ; dès le niveau 8, à 15 %, ce qui rend la barrière (<code>BARRIER_TICKS = 60</code>, soit 3 s) bien plus utile.</p>
+
+    <h3>Les serpents : poursuite à travers les murs</h3>
+    <p><code>updateSnakes()</code> est la poursuite la plus simple qui soit : à chaque pas, le serpent avance en ligne droite vers la position actuelle du vaisseau, d'au plus <code>snakeSpeed</code> case, sans regarder les murs. Aucun calcul de chemin : seule compte la distance à vol d'oiseau. La seule défense est la vitesse (le vaisseau va environ 3 fois plus vite qu'un serpent au niveau 1, 1,5 fois au niveau 12) et les balles.</p>
+
+    <h3>Les oeufs</h3>
+    <p>A la création du niveau, la moitié des globules (arrondie au-dessus) sont posés directement, les autres dans des oeufs ; tous les serpents naissent dans des oeufs, placés à plus de 4,7 cases du vaisseau. <code>updateEggs()</code> ouvre un oeuf quand le vaisseau entre dans son rayon : <code>EGG_RANGE_GLOB = 1.6</code> case pour un globule, <code>EGG_RANGE_SNAKE = 3.2</code> pour un serpent (d'où la remarque de l'aide : un oeuf qui s'ouvre de loin cache un serpent). L'éclosion dure <code>(cols - 1) * 2</code> pas, de 18 pas en grande taille à 6 pas en petite. Les globules encore dans leur oeuf comptent dans <code>globsLeft()</code> : la sortie reste fermée au joueur tant qu'il ne les a pas fait éclore et détruits.</p>
+
+    <h3>Collisions</h3>
+    <p>Les contacts sont de simples tests de distance au carré : globule mangé si <code>dist2 &lt; 0.4</code>, mort par serpent si <code>&lt; 0.3</code>. Les balles (<code>BULLET_SPEED = 0.5</code> case par pas) avancent en deux demi-pas pour ne pas traverser une créature ; à chaque franchissement de la ligne médiane entre deux cases, elles consultent le mur et s'y écrasent s'il est fermé.</p>
+
+    <h3>La montée en difficulté</h3>
+    <p><code>levelParams(n)</code> calcule tout à partir du numéro de niveau : taille de case (40, 32, 20 puis 16 pixels), donc taille de la grille, nombre de globules <code>min(3 + n, 14)</code>, de serpents <code>min(1 + floor((n - 1) * 2 / 3), 10)</code>, temps <code>round(40 + cases * 0.12)</code> secondes, vitesses et attirance de la sortie. Chaque niveau donne aussi 1 balle (2 dans 30 % des cas), avec un plafond de 5.</p>
+    <table>
+      <thead><tr><th>Niveau</th><th>Grille</th><th>Globules</th><th>Serpents</th><th>Temps</th><th>Vit. globule</th><th>Vit. serpent</th><th>bias</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>14 x 10</td><td>4</td><td>1</td><td>57 s</td><td>0,105</td><td>0,088</td><td>0,02</td></tr>
+        <tr><td>3</td><td>17 x 12</td><td>6</td><td>2</td><td>64 s</td><td>0,115</td><td>0,104</td><td>0,06</td></tr>
+        <tr><td>5</td><td>28 x 20</td><td>8</td><td>3</td><td>107 s</td><td>0,125</td><td>0,120</td><td>0,10</td></tr>
+        <tr><td>8</td><td>35 x 25</td><td>11</td><td>5</td><td>145 s</td><td>0,140</td><td>0,144</td><td>0,15</td></tr>
+        <tr><td>12+</td><td>35 x 25</td><td>14</td><td>8 à 10</td><td>145 s</td><td>0,150</td><td>0,170</td><td>0,15</td></tr>
+      </tbody>
+    </table>
+    <p>Les vitesses sont en cases par pas de 50 ms ; le vaisseau reste à 0,25.</p>
+
+    <h2>Pourquoi ce choix</h2>
+    <p><b>Le backtracker</b> fait des labyrinthes à longs couloirs et peu de carrefours, idéaux pour un jeu où l'on traque des globules : ils ne peuvent pas fuir dans tous les sens. Il tient en vingt lignes et s'exécute en une fraction de milliseconde sur 875 cases. Le défaut d'un labyrinthe parfait (un seul chemin, donc aucun moyen d'échapper à un serpent qui arrive en face) est corrigé par les 8 % de murs abattus.</p>
+    <p><b>Le parcours en largeur unique</b> est calculé une fois par niveau, car la sortie ne bouge pas. Ensuite, guider un globule vers la sortie coûte une lecture de tableau : inutile de lancer un A* pour chaque créature à chaque carrefour.</p>
+    <p><b>La marche aléatoire</b> rend les globules imprévisibles ; l'interdiction du demi-tour leur fait parcourir les couloirs au lieu de trembler sur place, et <code>bias</code> en fait une menace croissante.</p>
+    <p><b>La poursuite en ligne droite</b> des serpents vient de la règle originale (ils « volent au-dessus du labyrinthe »). Elle est très lisible : on voit d'où vient le danger, et elle crée la tension voulue sans IA coûteuse.</p>
+    <p><b>Le pas fixe de 50 ms</b> garde le jeu identique quelle que soit la fréquence de l'écran et reproduit le rythme de l'original. La simulation coûte quelques microsecondes par pas : pas besoin de Web Worker ni de dépendance.</p>
+    <p>Le prix à payer : le hasard pur (<code>Math.random</code>) rend les parties impossibles à rejouer à l'identique, le temps alloué ne dépend que du nombre de cases et pas du trajet réel, et plusieurs serpents finissent par se superposer en un seul point puisqu'ils visent tous la même cible.</p>
+
+    <h2>Comment l'améliorer</h2>
+    <ol>
+      <li><b>Une graine aléatoire déterministe.</b> Remplacer <code>rnd()</code> et les deux appels directs à <code>Math.random()</code> (balle bonus dans <code>startLevel()</code>, tirage du <code>bias</code> dans <code>chooseGlobDir()</code>) par un petit générateur à graine (mulberry32, une dizaine de lignes). Gain : niveaux rejouables, tests automatisés reproductibles via le crochet <code>window.LabRaph</code> déjà exposé, et possibilité d'un « labyrinthe du jour ». Effort : une heure.</li>
+      <li><b>Séparer les serpents.</b> Ajouter à <code>updateSnakes()</code> une petite force de répulsion entre serpents proches (steering de type <i>separation</i>) et éventuellement un rayon de virage limité. Les serpents arriveraient de plusieurs côtés au lieu de fusionner. Effort : une demi-journée.</li>
+      <li><b>Un temps calculé sur le vrai trajet.</b> <code>time</code> vaut <code>40 + cases * 0.12</code>, que les globules soient groupés ou dispersés. Avec la carte <code>lv.dist</code> et un parcours en largeur depuis le vaisseau, on peut estimer la longueur d'une tournée qui passe par tous les globules et oeufs puis la sortie, et fixer le temps à cette estimation multipliée par une marge selon le niveau. Effort : une journée, à placer dans <code>startLevel()</code>.</li>
+      <li><b>Des murs supplémentaires vraiment abattus.</b> La boucle des 8 % tire des murs au hasard, dont certains sont déjà ouverts, et n'abat jamais de mur sur la dernière ligne ni la dernière colonne. Tirer plutôt parmi la liste des murs internes encore fermés garantirait le nombre de boucles annoncé. Effort : une heure dans <code>makeMaze()</code>.</li>
+      <li><b>Une courbe de difficulté qui continue.</b> Après le niveau 15, plus rien ne change. On pourrait prolonger par des globules qui fuient le vaisseau (parcours en largeur depuis le vaisseau, recalculé à chaque changement de case). Au passage, l'aide parle d'un agrandissement tous les deux niveaux alors que le code change de taille aux niveaux 3, 5 et 8. Effort : variable.</li>
+    </ol>
+
+    <div class="nav"><a href="./">▶ Jouer à LabRaph</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+  </div>
+</div>
+</body>
+</html>

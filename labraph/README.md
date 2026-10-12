@@ -1,26 +1,33 @@
 # LabRaph
 
-Extracted from `labraph.zip`. Single-player maze action game: clear each labyrinth of yellow globules, avoid the red snakes, and get out. Keeps a high-score table.
+Extrait de `labraph.zip`. Jeu d'action en labyrinthe pour 1 joueur : détruire tous les globules jaunes, éviter les serpents rouges, puis sortir. Avec un tableau des meilleurs scores.
 
-## Files
+## Fichiers
 
-| File | Size | Role |
+| Fichier | Taille | Rôle |
 |---|---|---|
-| `LabRaph.exe` | 1.4 MB | The game (16-bit Windows 3.x executable, Borland Delphi 1). Graphics and sounds are embedded in the executable (no `.LIO` file). |
-| `LabRaph.tut` | 160 B | **High-score table** (5 entries). Obfuscated: names are stored with bytes XOR-ed with `0xFF`, interleaved with filler bytes; scores are at the end. Default content: Pro 60, Expert 48, Amateur 36, Débutant 24, Gromové 12. Rewritten when you enter the best scores. |
-| `Lisez-moi.txt` | 425 B | French readme: `LabRaph.exe` and `LabRaph.tut` must stay together. |
-| `WAVEMIX.INI`, `WAVMIX16.DLL`, `WING.DLL` | | Shared support files (see below). |
+| `LabRaph.exe` | 1,4 Mo | Le jeu (exécutable Windows 3.x 16 bits, Borland Delphi 1). Les graphismes et les sons sont intégrés à l'exécutable (pas de fichier `.LIO`). |
+| `LabRaph.tut` | 160 o | **Tableau des meilleurs scores** (5 entrées). Brouillé : les noms sont stockés avec des octets combinés par XOR avec `0xFF`, entrecoupés d'octets de remplissage ; les scores sont à la fin. Contenu d'origine : Pro 60, Expert 48, Amateur 36, Débutant 24, Gromové 12. Réécrit quand on entre dans les meilleurs scores. |
+| `Lisez-moi.txt` | 425 o | Mode d'emploi en français : `LabRaph.exe` et `LabRaph.tut` doivent rester ensemble. |
+| `WAVEMIX.INI`, `WAVMIX16.DLL`, `WING.DLL` | | Fichiers de support partagés (voir plus bas). |
 
-## Rules (summarised from the in-game help)
+> Le jeu cherche aussi une musique `LABMUS.MID`, qui n'est pas fournie dans l'archive.
 
-- On each level, destroy all the yellow globules, then exit the maze. Time is limited and no yellow globule may exit before you.
-- Kill globules by contact (2 points) or by shooting them (1 point).
-- Red snakes kill you on contact and chase you **through** walls; you can shoot them if you have bullets. You gain at least one bullet per level, 5 maximum.
-- Eggs open when you approach; snake eggs detect you from further away than globule eggs.
-- The maze becomes invisible during the last 20 seconds of a level.
-- Once per level you can place a 3-second temporary barrier to block the exit.
-- **Controls**: arrow keys to move, Space to shoot, Enter for the barrier, `W` to stay in place (combine with arrows to turn on the spot).
+## Règles (résumé de l'aide du jeu)
 
-## Shared support files
+- À chaque niveau, il faut détruire tous les globules jaunes, puis sortir du labyrinthe. Le temps est limité et aucun globule jaune ne doit sortir avant toi.
+- On détruit les globules au contact (2 points) ou en leur tirant dessus (1 point).
+- Les serpents rouges tuent au contact et te poursuivent **à travers** les murs ; tu peux leur tirer dessus s'il te reste des balles. Tu gagnes au moins une balle par niveau, 5 au maximum.
+- Les oeufs s'ouvrent quand tu t'approches ; un oeuf de serpent te détecte de plus loin qu'un oeuf de globule.
+- Le labyrinthe devient invisible pendant les 20 dernières secondes d'un niveau.
+- Une fois par niveau, tu peux poser une barrière provisoire de 3 secondes pour bloquer la sortie.
+- **Commandes** : flèches pour se déplacer, `Espace` pour tirer, `Entrée` pour la barrière, `W` pour rester sur place (avec les flèches pour pivoter).
 
-`WING.DLL`, `WAVMIX16.DLL` and `WAVEMIX.INI` are the Microsoft WinG graphics library, the Microsoft WaveMix sound mixing library and its configuration file. They are identical in every game; see the [root README](../README.md#files-common-to-every-game).
+## Version navigateur
+
+- Jouer : [`docs/labraph/`](../docs/labraph/) (en ligne : `https://kados.github.io/LehcimGames/labraph/` une fois GitHub Pages activé)
+- Comment fonctionne l'algorithme, pourquoi, et comment l'améliorer : [`docs/labraph/algorithme.html`](../docs/labraph/algorithme.html)
+
+## Fichiers de support partagés
+
+`WING.DLL`, `WAVMIX16.DLL` et `WAVEMIX.INI` sont la bibliothèque graphique WinG de Microsoft, la bibliothèque de mixage sonore WaveMix de Microsoft et son fichier de configuration. Ils sont identiques dans tous les jeux ; voir le [README principal](../README.md#fichiers-communs-à-tous-les-jeux).
