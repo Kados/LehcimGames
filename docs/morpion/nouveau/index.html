@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#c2410c">
+<title>Morpion (nouvelle version) - LehcimGames</title>
+<link rel="stylesheet" href="../../common/nouveau.css">
+<style>
+  /* Morpion-specific additions to the shared shell */
+  .nv-stage { min-height: 200px; padding: 0; }
+  .nv-stage canvas { image-rendering: auto; cursor: pointer; }
+  .nv-stage canvas:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: -3px; }
+  .status-row { display: flex; align-items: center; gap: 10px; }
+  .status-row .txt { flex: 1; min-width: 0; }
+  #pendulum { width: 40px; height: 40px; image-rendering: pixelated; flex: none; visibility: hidden; }
+  #pendulum.on { visibility: visible; }
+  .score .p { display: flex; align-items: center; gap: 10px; }
+  .score .p .who { flex: 1; }
+  .score .p .dot { width: 22px; height: 22px; border-radius: 50%; flex: none; box-shadow: inset -3px -3px 5px rgba(0, 0, 0, .35), inset 2px 2px 4px rgba(255, 255, 255, .5); }
+  .score .p .dot.p1 { background: radial-gradient(circle at 35% 35%, #ffd27a, #e0860f 60%, #8a4a05); }
+  .score .p .dot.p2 { background: radial-gradient(circle at 35% 35%, #e9e9e9, #8b8b8b 60%, #3f3f3f); }
+  .tools { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .tools .btn { padding: 0 8px; }
+  .tools .btn kbd { font-size: 11px; }
+  #history { list-style: none; margin: 0; padding: 0; max-height: 230px; overflow: auto; font-size: 14px; font-variant-numeric: tabular-nums; }
+  #history li { display: grid; grid-template-columns: 2.4em 1fr auto; gap: 6px; padding: 3px 6px; border-radius: 8px; cursor: pointer; }
+  #history li:hover, #history li:focus-visible { background: var(--surface-2); outline: none; }
+  #history li .num { color: var(--ink-2); }
+  #history li .pts { color: var(--good); font-weight: 600; }
+  #history li.p2 .pts { color: var(--bad); }
+  #history li.last { background: var(--accent-soft); }
+  .empty-note { color: var(--ink-2); font-size: 14px; margin: 0; }
+  .seg { width: 100%; }
+  .seg button { flex: 1; }
+  .hint-text { font-size: 13px; color: var(--ink-2); margin: 4px 0 0; }
+  .overlay .btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .overlay .sum { display: grid; grid-template-columns: auto auto; gap: 2px 16px; text-align: left; font-size: 15px; color: #e8e4dc; }
+  .overlay .sum b { color: #fff; font-variant-numeric: tabular-nums; }
+  .overlay .big { font-size: clamp(30px, 6vw, 44px); font-weight: 800; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+  .overlay .btn { min-width: 120px; }
+  @media (max-width: 900px) {
+    .nv-main { grid-template-columns: 1fr; }
+    .nv-stage { border-radius: 10px; margin: 0 -4px; }
+  }
+  @media (max-width: 420px) {
+    .nv-main { padding: 8px 8px 12px; }
+    .nv-top .badge { display: none; }
+    .tools .btn kbd { display: none; }
+    .xs-hide { display: none; }
+    .nv-top { gap: 6px; }
+    .nv-top .actions { gap: 2px; }
+  }
+  @media (pointer: coarse) { .keys-card { display: none; } }
+</style>
+</head>
+<body>
+<header class="nv-top">
+  <a class="back" href="../../index.html#morpion">← <span>Accueil</span></a>
+  <h1>Morpion</h1>
+  <span class="badge">Nouvelle version</span>
+  <span class="grow"></span>
+  <div class="actions">
+    <button class="btn primary" id="new">Nouvelle<span class="xs-hide"> partie</span></button>
+    <button class="btn icon ghost" data-help title="Règles" aria-label="Règles">?</button>
+    <button class="btn icon ghost" id="settingsBtn" title="Réglages" aria-label="Réglages">⚙</button>
+    <button class="btn icon ghost" data-mute title="Son" aria-label="Couper ou remettre le son"></button>
+  </div>
+</header>
+
+<main class="nv-main">
+  <div class="nv-stage" id="stage">
+    <canvas id="game" width="400" height="320" tabindex="0" aria-label="Plateau de Morpion. Flèches pour déplacer le curseur, Entrée pour poser une bille."></canvas>
+    <div class="overlay" id="overlay" hidden></div>
+  </div>
+  <aside class="nv-side">
+    <section class="card" aria-live="polite">
+      <div class="status-row">
+        <div class="txt"><div class="status" id="status">Chargement...</div><div class="sub" id="substatus"></div></div>
+        <canvas id="pendulum" width="40" height="40" aria-hidden="true"></canvas>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Score</h2>
+      <div class="score">
+        <div class="p" id="sc1"><span class="dot p1" aria-hidden="true"></span><div class="who"><div class="n">Toi</div><div class="v" id="score1">0</div></div></div>
+        <div class="p" id="sc2"><span class="dot p2" aria-hidden="true"></span><div class="who"><div class="n">Ordinateur</div><div class="v" id="score2">0</div></div></div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="tools">
+        <button class="btn" id="undo" title="Annuler ton dernier coup (U)">↶ Annuler</button>
+        <button class="btn" id="hint" title="Demander un indice à l'ordinateur (I)">💡 Indice</button>
+        <button class="btn" id="giveup" title="Abandonner la partie">🏳 Abandon</button>
+      </div>
+      <label class="switch" style="margin-top:8px"><span>Montrer les menaces</span><input type="checkbox" id="threatsQuick"></label>
+    </section>
+    <section class="card">
+      <h2>Coups joués</h2>
+      <ol id="history" aria-label="Historique des coups"></ol>
+      <p class="empty-note" id="historyEmpty">Aucun coup pour l'instant.</p>
+    </section>
+    <section class="card">
+      <h2>Partie</h2>
+      <dl class="rows">
+        <dt>Plateau</dt><dd id="infoSize">10-10</dd>
+        <dt>Niveau</dt><dd id="infoLevel">3</dd>
+        <dt>Bilan</dt><dd id="infoRecord">0 / 0 / 0</dd>
+        <dt>Réflexion</dt><dd id="infoSearch">-</dd>
+        <dt>Calcul</dt><dd id="infoMode">-</dd>
+      </dl>
+    </section>
+    <section class="card keys-card">
+      <h2>Clavier</h2>
+      <div class="keys">
+        <span><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd></span><span>Déplacer le curseur</span>
+        <span><kbd>Entrée</kbd> <kbd>Espace</kbd></span><span>Poser une bille</span>
+        <span><kbd>U</kbd></span><span>Annuler</span>
+        <span><kbd>I</kbd></span><span>Indice</span>
+        <span><kbd>M</kbd></span><span>Montrer / cacher les menaces</span>
+        <span><kbd>N</kbd></span><span>Nouvelle partie</span>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<footer class="nv-foot">
+  <a href="../">Version d'origine</a>
+  <a href="../algorithme.html">L'algorithme</a>
+  <a href="../../index.html">Tous les jeux</a>
+</footer>
+
+<dialog id="help"><div class="d-head"><h2>Règles du Morpion</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <p>Chaque joueur dépose à son tour une bille sur une case du damier. Tes billes sont <b>orange</b>, celles de l'ordinateur sont <b>grises</b>.</p>
+    <p>Chaque joueur gagne un point à chaque fois qu'il aligne <b>5 billes</b> de sa couleur, horizontalement, verticalement ou en diagonale. L'alignement est alors barré d'un trait rouge.</p>
+    <p>Le jeu s'arrête (automatiquement) dès que les 2 joueurs ne peuvent plus progresser, mais pas avant ; joue donc les derniers coups... Le gagnant est celui qui a le plus de points.</p>
+    <h3>Précisions</h3>
+    <ul>
+      <li>Une bille peut servir à plusieurs alignements dans des directions différentes, mais jamais à deux alignements dans la même direction : 6 billes en ligne rapportent 1 point, 10 billes en ligne en rapportent 2.</li>
+      <li>La partie s'arrête quand plus aucun alignement de 5 n'est réalisable pour personne.</li>
+    </ul>
+    <h3>Les aides de cette version</h3>
+    <ul>
+      <li><b>Menaces</b> : un anneau rouge marque les cases où l'ordinateur marquerait un point au prochain coup, un anneau vert celles où toi tu marques. En mode « 3 et 4 », de petits points signalent aussi les cases qui font un 4.</li>
+      <li><b>Annuler</b> reprend ton dernier coup (et la réponse de l'ordinateur), même pendant qu'il réfléchit.</li>
+      <li><b>Indice</b> : l'ordinateur te montre le coup qu'il jouerait à ta place.</li>
+      <li>Au clavier : flèches puis <kbd>Entrée</kbd>. Sur téléphone, avec les grands plateaux, un premier toucher choisit la case et un second la confirme (réglable).</li>
+      <li>L'ordinateur ne fige plus la page quand il réfléchit : tu peux annuler ou changer de partie à tout moment.</li>
+    </ul>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">J'ai compris</button></div></dialog>
+
+<dialog id="settings"><div class="d-head"><h2>Réglages</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <div class="field"><span class="label" id="lblSize">Plateau</span>
+      <div class="seg" data-setting="size" role="group" aria-labelledby="lblSize">
+        <button data-v="8">8-8</button><button data-v="10">10-10</button><button data-v="12">12-12</button><button data-v="15">15-15</button>
+      </div></div>
+    <div class="field"><span class="label" id="lblLevel">Niveau de réflexion de l'ordinateur</span>
+      <div class="seg" data-setting="level" role="group" aria-labelledby="lblLevel">
+        <button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button><button data-v="5">5</button>
+      </div>
+      <p class="hint-text" id="levelHint"></p></div>
+    <div class="field"><span class="label" id="lblFirst">Qui commence ?</span>
+      <div class="seg" data-setting="first" role="group" aria-labelledby="lblFirst">
+        <button data-v="1">Le joueur</button><button data-v="2">L'ordinateur</button><button data-v="3">Chacun son tour</button>
+      </div></div>
+    <div class="field"><span class="label" id="lblThreats">Montrer les menaces</span>
+      <div class="seg" data-setting="threats" role="group" aria-labelledby="lblThreats">
+        <button data-v="0">Non</button><button data-v="1">Les 4</button><button data-v="2">Les 3 et les 4</button>
+      </div></div>
+    <div class="field"><span class="label" id="lblSpeed">Vitesse de l'ordinateur</span>
+      <div class="seg" data-setting="speed" role="group" aria-labelledby="lblSpeed">
+        <button data-v="250">Rapide</button><button data-v="650">Normale</button><button data-v="1200">Posée</button>
+      </div></div>
+    <div class="field"><span class="label" id="lblConfirm">Confirmer le coup d'un second toucher</span>
+      <div class="seg" data-setting="confirm" role="group" aria-labelledby="lblConfirm">
+        <button data-v="auto">Auto</button><button data-v="on">Toujours</button><button data-v="off">Jamais</button>
+      </div>
+      <p class="hint-text">« Auto » : sur écran tactile, pour les plateaux 12-12 et 15-15.</p></div>
+    <p class="hint-text">Le plateau et « Qui commence ? » s'appliquent tout de suite si la partie n'a pas commencé, sinon à la prochaine partie.</p>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="../../common/lehcim.js"></script>
+<script src="engine.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

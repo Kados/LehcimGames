@@ -69,7 +69,40 @@
       <li><b>Régler les poids par auto-jeu.</b> <code>VAL</code>, <code>ATT</code> et <code>DEF</code> ont été fixés à la main. Le moteur accepte déjà un <code>rnd</code> déterministe pour les tests : on peut faire jouer des milliers de parties sous node entre deux jeux de poids et garder le meilleur. Cela servirait aussi à vérifier que chaque niveau bat bien le précédent. Effort : moyen, sans toucher à l'interface.</li>
     </ol>
 
-    <div class="nav"><a href="./">▶ Jouer à Morpion</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+    <h2>Dans la nouvelle version</h2>
+    <p>La <a href="nouveau/">nouvelle version</a> garde exactement les mêmes règles (fenêtres de 5 cases, lignes barrées par direction, arrêt automatique), le même décor peint, les mêmes billes et les mêmes sons. Son moteur (<code>nouveau/engine.js</code>) reprend les six pistes ci-dessus ; avant toute mesure, on a vérifié sur 60 parties aléatoires (plateaux 8-8 à 15-15, avec annulations) que points marqués, fin de partie, cases utiles, notes <code>cellValue</code> et évaluation sont identiques, coup après coup, à ceux du moteur d'origine.</p>
+    <ul>
+      <li><b>Web Worker.</b> La recherche tourne dans <code>nouveau/ai-worker.js</code>, qui charge le moteur avec <code>importScripts</code>, reçoit la liste des coups, rejoue la partie et renvoie le coup choisi. La page ne se fige plus (pendule, survol, boutons) : on peut même annuler son coup pendant que l'ordinateur réfléchit. Les niveaux 4 et 5 disposent alors de 1,5 s et 2,5 s au lieu de 0,9 s et 1,4 s. Si le worker ne peut pas être créé (page ouverte depuis le disque, navigateur ancien), s'il tombe en erreur ou ne répond pas, le calcul se fait sur la page avec les limites de temps d'origine.</li>
+      <li><b>Candidats et évaluation incrémentaux.</b> <code>play</code>, <code>undo</code> et <code>mark</code> mettent maintenant à jour, fenêtre par fenêtre, la note de chaque case pour chaque joueur, le nombre de fenêtres vivantes par case et au total, la somme des <code>VAL</code> et les cases qui complètent un 4 ou prolongent un 3. <code>usefulCells</code>, <code>cellValue</code>, <code>over</code> et <code>evaluate</code> ne reparcourent plus les 192 à 572 fenêtres : environ <b>8 à 10 fois plus de positions par seconde</b>.</li>
+      <li><b>Table de transposition (Zobrist).</b> Deux clés de 32 bits par case et couleur, plus une par case barrée et direction (les points possibles en dépendent), et le camp au trait. La table de 2<sup>18</sup> entrées garde profondeur, valeur, borne et meilleur coup.</li>
+      <li><b>Ordre des coups.</b> Coup de la table d'abord, puis point immédiat ou blocage d'un 4, deux coups « killer » par profondeur, puis note + heuristique d'historique ; les coups suivants sont essayés avec une fenêtre nulle (PVS). À la racine aussi, on prouve d'abord avec une fenêtre nulle qu'un coup est « pire » avant de calculer sa valeur exacte.</li>
+      <li><b>Recherche des menaces.</b> À la profondeur 0, une quiescence ne regarde que les coups forcés : compléter son 4 (prendre le point), sinon bloquer les 4 adverses, sinon (quelques demi-coups) créer un 4. Les variantes se terminent sur une position calme et les doubles menaces ne sont plus estimées « à la louche ».</li>
+      <li><b>Poids réglés par auto-jeu.</b> Les poids sont devenus un paramètre (<code>new Game(n, poids)</code>). Treize jeux de poids (VAL, ATT, DEF, bonus des 4) ont joué environ 900 parties sous node contre les poids d'origine, à profondeur 3 sur 10-10 et 12-12 avec ouvertures tirées au hasard. Aucun n'a fait mieux qu'un écart dans le bruit (meilleur : 32 victoires, 26 défaites et 62 nulles en 120 parties) : les poids écrits à la main sont déjà sur un plateau, ils sont donc gardés. L'auto-jeu a surtout servi à vérifier l'échelle des niveaux (plus bas).</li>
+      <li><b>Bug corrigé.</b> Dans le moteur d'origine, quand le temps est dépassé au fond de l'arbre, seul le coup de la racine est défait : les billes posées plus bas restent sur le plateau (mesuré : 3 billes fantômes en forçant un délai de 30 ms au niveau 5). La nouvelle version garde la pile des coups de la recherche et la défait entièrement.</li>
+    </ul>
+    <h3>Mesures (node, même position, largeur 10, profondeur fixe sans quiescence)</h3>
+    <table>
+      <tr><th>Mesure</th><th>Version d'origine</th><th>Nouvelle version</th></tr>
+      <tr><td>10-10 après 16 billes, profondeur 6</td><td>14 515 positions en 405 ms (36 000 /s)</td><td>14 704 positions en 50 ms (294 000 /s) ; 8 037 positions et 25 ms avec la table</td></tr>
+      <tr><td>15-15 après 30 billes, profondeur 6</td><td>7 128 positions en 618 ms (11 500 /s)</td><td>8 715 positions en 80 ms (109 000 /s) ; 6 597 positions et 59 ms avec la table</td></tr>
+      <tr><td>Profondeur au niveau 5 (1,4 s)</td><td>5 au plus (limite du niveau)</td><td>7,5 à 8 en moyenne, plus la quiescence ; 8,8 en 2,5 s dans le worker</td></tr>
+      <tr><td>Blocage de la page pendant la réflexion</td><td>jusqu'à 1,4 s</td><td>aucun avec le worker (17 ms entre deux images au pire pendant 2,5 s de calcul) ; sans worker, 1,4 s au plus</td></tr>
+    </table>
+    <p><b>Matchs contre l'ancien joueur, au même niveau et au même temps</b> (4 premières billes tirées au hasard près du centre, qui commence alterné ; un match gagné = plus de points) :</p>
+    <table>
+      <tr><th>Conditions</th><th>Victoires</th><th>Nulles</th><th>Défaites</th><th>Points</th></tr>
+      <tr><td>Niveau 2, 10-10, 30 parties</td><td>9</td><td>10</td><td>11</td><td>147 - 152</td></tr>
+      <tr><td>Niveau 3, 10-10, 30 parties</td><td>11</td><td>17</td><td>2</td><td>39 - 30</td></tr>
+      <tr><td>Niveau 4, 10-10, 20 parties</td><td>10</td><td>9</td><td>1</td><td>26 - 14</td></tr>
+      <tr><td>Niveau 4, 12-12, 10 parties</td><td>6</td><td>3</td><td>1</td><td>31 - 24</td></tr>
+      <tr><td>Niveau 5, 10-10, 20 parties (1,4 s chacun)</td><td>9</td><td>9</td><td>2</td><td>46 - 38</td></tr>
+      <tr><td>Niveau 5, 10-10, 12 parties (2,5 s du worker contre 1,4 s)</td><td>6</td><td>5</td><td>1</td><td>34 - 26</td></tr>
+      <tr><td>Niveau 5, 15-15, 6 parties</td><td>3</td><td>1</td><td>2</td><td>59 - 55</td></tr>
+    </table>
+    <p>Le niveau 2 est volontairement resté celui d'origine (un demi-coup, sans quiescence, avec du hasard) : il fait jeu égal avec l'ancien. Les niveaux restent distincts dans le nouveau moteur (10-10) : niveau 2 contre niveau 1, 19 victoires, 1 nulle, 0 défaite ; niveau 3 contre 2, 19 - 0 - 1 ; niveau 4 contre 3, 4 - 14 - 2 en 10-10 mais 7 - 9 - 0 en 12-12 ; niveau 5 contre 4, 4 - 6 - 2. Sur le petit plateau, beaucoup de parties entre bons joueurs finissent à 0 - 0 ou 1 - 1 : les écarts se voient surtout sur les grands plateaux.</p>
+    <p>Côté interface : panneau de score et tour de jeu, historique des coups noté A1 à O15 (un clic montre la case), dernier coup encadré, aide optionnelle qui entoure les cases où un point est à un coup (rouge pour l'ordinateur, vert pour toi) et, si on veut, les cases qui font un 4, aperçu de la bille au survol, jeu au clavier (flèches et Entrée), second toucher de confirmation sur téléphone pour les plateaux 12-12 et 15-15, cases agrandies sur les petits plateaux et dessin à la résolution de l'écran, annulation, indice, vitesse de l'ordinateur réglable, résumé de fin de partie et bilan par niveau.</p>
+
+    <div class="nav"><a href="nouveau/">▶ Jouer à la nouvelle version</a><a href="./">Version d'origine</a><a href="../index.html">◀ Retour à l'accueil</a></div>
   </div>
 </div>
 </body>
