@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#c2410c">
+<title>Colours-MIX (nouvelle version) - LehcimGames</title>
+<link rel="stylesheet" href="../../common/nouveau.css">
+<style>
+  .nv-play { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .nv-stage canvas { cursor: pointer; }
+  .timer { position: relative; height: 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; margin-top: 10px; }
+  .timer i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--good); border-radius: 999px; transition: width .1s linear; }
+  .timer.warn i { background: var(--bad); }
+  .timer-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--ink-2); margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .timer-row b { color: var(--ink); font-size: 15px; }
+  .timer-row.warn b { color: var(--bad); }
+  .pl { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 4px 10px; padding: 8px 10px; border-radius: 10px; border: 2px solid transparent; background: var(--surface-2); }
+  .pl + .pl { margin-top: 8px; }
+  .pl.turn { border-color: var(--accent); }
+  .pl canvas.glob { width: 24px; height: 24px; image-rendering: pixelated; }
+  .pl .who { font-weight: 600; line-height: 1.2; }
+  .pl .role { font-size: 13px; color: var(--ink-2); font-weight: 400; display: block; }
+  .dots { display: flex; gap: 4px; }
+  .dot { width: 36px; height: 36px; padding: 0; border-radius: 10px; border: 2px solid transparent; background: transparent; cursor: pointer; display: grid; place-items: center; }
+  .dot canvas { width: 24px; height: 24px; image-rendering: pixelated; pointer-events: none; }
+  .dot[aria-pressed="true"] { border-color: var(--ink); background: var(--surface); }
+  .dot:disabled { cursor: default; opacity: .8; }
+  .dot:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px; }
+  .rounds { display: flex; gap: 12px; align-items: center; }
+  .rounds canvas { width: 82px; height: 80px; image-rendering: pixelated; flex: none; }
+  .rounds .rows { flex: 1; font-size: 14px; }
+  .bars { display: grid; gap: 6px; font-size: 14px; }
+  .bar { display: grid; grid-template-columns: 64px 1fr 44px; align-items: center; gap: 8px; }
+  .bar .track { height: 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+  .bar .track i { display: block; height: 100%; width: 0; }
+  .bar.r .track i { background: #e23b3b; }
+  .bar.y .track i { background: #e5c100; }
+  .bar b { text-align: right; font-variant-numeric: tabular-nums; }
+  .after { font-size: 13px; color: var(--ink-2); margin-top: 6px; min-height: 1.4em; }
+  .after .up { color: var(--good); font-weight: 600; }
+  .after .down { color: var(--bad); font-weight: 600; }
+  .legend { display: grid; gap: 6px; font-size: 14px; }
+  .legend div { display: flex; align-items: center; gap: 6px; }
+  .legend canvas { width: 20px; height: 20px; image-rendering: pixelated; border-radius: 4px; flex: none; }
+  .legend .note { color: var(--ink-2); font-size: 13px; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .log { list-style: none; margin: 0; padding: 0; font-size: 14px; max-height: 190px; overflow: auto; }
+  .log li { padding: 3px 0; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+  .log li:last-child { border-bottom: 0; }
+  .log .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .log .t { color: var(--ink-2); font-variant-numeric: tabular-nums; margin-left: auto; font-size: 12px; white-space: nowrap; }
+  .overlay { background: rgba(0, 0, 0, .72); }
+  .overlay .btn { min-width: 140px; }
+  .overlay .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .overlay ul { margin: 0; padding: 0 0 0 18px; text-align: left; max-width: 44ch; color: #e8e4dc; font-size: 15px; }
+  .touchpad .btn.wide { min-width: 110px; font-size: 16px; }
+  .seg-wrap { margin-bottom: 12px; }
+  .think { display: inline-block; }
+  .think i { display: inline-block; width: 6px; height: 6px; margin-left: 3px; border-radius: 50%; background: currentColor; animation: blink 1s infinite; }
+  .think i:nth-child(2) { animation-delay: .2s; } .think i:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+  #new .short { display: none; }
+  @media (max-width: 520px) {
+    .nv-top .badge { display: none; } .nv-top h1 { font-size: 16px; } #new { padding: 0 10px; }
+    #new .long { display: none; } #new .short { display: inline; }
+    .overlay { gap: 8px; padding: 10px; } .overlay ul { font-size: 13px; } .overlay h2 { font-size: 20px; }
+    .overlay p { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+<header class="nv-top">
+  <a class="back" href="../../index.html#colorsmix">← <span>Accueil</span></a>
+  <h1>Colours-MIX</h1>
+  <span class="badge">Nouvelle version</span>
+  <span class="grow"></span>
+  <div class="actions">
+    <button class="btn primary" id="new" aria-label="Nouvelle partie"><span class="long">Nouvelle partie</span><span class="short">Nouvelle</span></button>
+    <button class="btn icon ghost" data-help title="Règles" aria-label="Règles">?</button>
+    <button class="btn icon ghost" id="settingsBtn" title="Réglages" aria-label="Réglages">⚙</button>
+    <button class="btn icon ghost" id="muteBtn" title="Son" aria-label="Couper le son">🔊</button>
+  </div>
+</header>
+
+<main class="nv-main">
+  <div class="nv-play">
+    <div class="nv-stage" id="stage">
+      <canvas id="game" width="480" height="480" aria-label="Plateau de jeu" role="img"></canvas>
+      <div class="overlay" id="overlay" hidden></div>
+    </div>
+    <div class="touchpad" id="touchpad" aria-label="Commandes tactiles">
+      <button class="btn" data-pad="ccw" aria-label="Reculer sur la zone noire" title="Reculer sur la zone noire">↺</button>
+      <button class="btn" data-pad="cw" aria-label="Avancer sur la zone noire" title="Avancer sur la zone noire">↻</button>
+      <button class="btn wide" data-pad="colour" aria-label="Changer de couleur">Couleur</button>
+      <button class="btn wide primary" data-pad="cross" aria-label="Traverser">Traverser</button>
+    </div>
+  </div>
+  <aside class="nv-side">
+    <section class="card" aria-live="polite">
+      <div class="status" id="status"></div>
+      <div class="sub" id="substatus"></div>
+      <div class="timer" id="timer" role="progressbar" aria-label="Temps restant du tour" aria-valuemin="0" aria-valuemax="100"><i></i></div>
+      <div class="timer-row" id="timerRow"><span>Temps du tour</span><b id="timerTxt">-</b></div>
+    </section>
+
+    <section class="card">
+      <h2>Joueurs</h2>
+      <div class="pl" id="pl0">
+        <canvas class="glob" width="24" height="24"></canvas>
+        <div class="who">Rouge<span class="role">Haut et bas</span></div>
+        <div class="dots" data-k="0"></div>
+      </div>
+      <div class="pl" id="pl1">
+        <canvas class="glob" width="24" height="24"></canvas>
+        <div class="who">Jaune<span class="role">Gauche et droite</span></div>
+        <div class="dots" data-k="1"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Manches</h2>
+      <div class="rounds">
+        <canvas id="roundsCv" width="82" height="80" aria-hidden="true"></canvas>
+        <dl class="rows" id="roundsRows"></dl>
+      </div>
+    </section>
+
+    <section class="card" id="aidCard">
+      <h2>Chances du globule gris</h2>
+      <div class="bars">
+        <div class="bar r"><span>Rouge</span><span class="track"><i id="barR"></i></span><b id="pR">-</b></div>
+        <div class="bar y"><span>Jaune</span><span class="track"><i id="barY"></i></span><b id="pY">-</b></div>
+      </div>
+      <div class="after" id="after"></div>
+      <dl class="rows" style="font-size:14px;margin-top:6px"><dt>Mélanges manquants pour ouvrir un passage</dt><dd id="conn">-</dd></dl>
+      <div class="sub">Chances que le gris sorte de chaque côté dans les 35 prochaines secondes environ, si le plateau ne change pas. Sur le plateau : sa région est éclaircie et chaque sortie montre son pourcentage.</div>
+    </section>
+
+    <section class="card">
+      <h2>Actions</h2>
+      <div class="btnrow">
+        <button class="btn" id="hintBtn" title="Indice (touche H)">💡 Indice</button>
+        <button class="btn" id="pauseBtn" title="Pause (touche P)">⏸ Pause</button>
+        <button class="btn" id="aidBtn" aria-pressed="false" title="Montrer la région du gris (touche V)">👁 Aide</button>
+      </div>
+      <div class="keys" style="margin-top:12px" id="keysBox"></div>
+    </section>
+
+    <section class="card">
+      <h2>Mélange des couleurs</h2>
+      <div class="legend" id="legend"></div>
+    </section>
+
+    <section class="card">
+      <h2>Journal</h2>
+      <ol class="log" id="log"></ol>
+    </section>
+
+    <section class="card">
+      <h2>Vos résultats (1 joueur)</h2>
+      <dl class="rows" id="records"></dl>
+    </section>
+  </aside>
+</main>
+
+<footer class="nv-foot">
+  <a href="../">Version d'origine</a>
+  <a href="../algorithme.html">L'algorithme</a>
+  <a href="../../index.html">Tous les jeux</a>
+</footer>
+
+<dialog id="help"><div class="d-head"><h2>Règles du jeu</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <p>Le jeu se joue en 2 manches : le globule jaune commence la première, le rouge la seconde. Si chaque globule en gagne une, le vainqueur est celui qui a remporté la sienne le plus rapidement (à égalité, le jaune l'emporte).</p>
+    <p>Le globule <b>rouge</b> doit amener le globule gris dans la zone noire du <b>haut</b> ou du <b>bas</b>. Le globule <b>jaune</b> doit l'amener dans la zone noire de <b>gauche</b> ou de <b>droite</b>.</p>
+    <p>Le globule gris se promène au hasard, mais il ne passe d'une case à l'autre que si leurs couleurs sont identiques ou si la seconde est noire.</p>
+    <p>Chacun son tour, pendant une durée limitée, les globules rouge et jaune se déplacent sur la zone noire, choisissent s'ils le désirent une « couleur d'application », puis traversent la zone centrale tout droit : les cases rencontrées changent de couleur.</p>
+    <h3>Le mélange</h3>
+    <p>Rouge + bleu = violet, bleu + jaune = vert, rouge + jaune = orange, les trois = brun. Appliquer une couleur déjà présente la retire (violet + rouge = bleu) ; une couleur pure reste inchangée si on lui applique sa propre couleur.</p>
+    <h3>Restrictions</h3>
+    <ul>
+      <li>Pas deux fois de suite la même ligne (elle est grillagée).</li>
+      <li>Une ligne avec une pyramide ou le globule gris est interdite, ainsi qu'une case d'arrivée occupée.</li>
+      <li>Si le temps du tour s'écoule avant la traversée, le tour passe à l'adversaire.</li>
+      <li>En mode « un joueur », vous êtes le jaune et l'ordinateur dirige le rouge.</li>
+    </ul>
+    <h3>Commandes</h3>
+    <div class="keys">
+      <span>Souris / doigt</span><span>touchez une case noire pour y aller, touchez votre globule (ou la même case une seconde fois) pour traverser, touchez une pastille pour la couleur.</span>
+      <span><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd></span><span>jaune : se déplacer</span>
+      <span><kbd>Entrée</kbd> / <kbd>Espace</kbd></span><span>jaune : couleur / traverser</span>
+      <span><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd></span><span>rouge : se déplacer (à deux)</span>
+      <span><kbd>2</kbd> / <kbd>1</kbd></span><span>rouge : couleur / traverser</span>
+      <span><kbd>P</kbd></span><span>pause</span>
+      <span><kbd>H</kbd> / <kbd>V</kbd></span><span>indice / aide sur le gris</span>
+    </div>
+    <h3>Aides de la nouvelle version</h3>
+    <ul>
+      <li><b>Aperçu</b> : sur votre case de départ (ou en survolant une case noire à la souris), les petites pastilles montrent la couleur que prendra chaque case de la ligne.</li>
+      <li><b>Aide</b> : la région où le gris peut se promener est éclaircie et chaque sortie affiche sa probabilité ; le panneau indique aussi l'effet de la traversée prévue.</li>
+      <li><b>Indice</b> : l'ordinateur vous propose une traversée (case marquée et couleur).</li>
+    </ul>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">J'ai compris</button></div></dialog>
+
+<dialog id="settings"><div class="d-head"><h2>Réglages</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
+  <div class="d-body">
+    <div class="field"><span class="label" id="lblMode">Mode</span>
+      <div class="seg" role="group" aria-labelledby="lblMode" id="segMode">
+        <button data-v="1">1 joueur</button><button data-v="2">2 joueurs</button>
+      </div></div>
+    <div class="field"><span class="label" id="lblLevel">Niveau de l'ordinateur</span>
+      <div class="seg" role="group" aria-labelledby="lblLevel" id="segLevel">
+        <button data-v="0">Débutant</button><button data-v="1">Confirmé</button><button data-v="2">Expert</button>
+      </div>
+      <span class="sub" id="levelInfo"></span></div>
+    <label class="switch"><span>Musique</span><input type="checkbox" id="optMusic"></label>
+    <label class="switch"><span>Aperçu de la traversée</span><input type="checkbox" id="optPreview"></label>
+    <label class="switch"><span>Aide : région et chances du globule gris</span><input type="checkbox" id="optAid"></label>
+    <p class="sub">Le mode et le niveau s'appliquent à la prochaine partie.</p>
+  </div>
+  <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">OK</button></div></dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="../../common/lehcim.js"></script>
+<script src="engine.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

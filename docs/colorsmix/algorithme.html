@@ -78,7 +78,67 @@
     </ol>
     <div class="callout">Petit nettoyage au passage : le terme <code>(q.length &gt; 1 ? 0 : 0)</code> à la fin de <code>evaluate()</code> vaut toujours 0, et le paramètre <code>k</code> de <code>legalMoves()</code> n'est pas utilisé.</div>
 
-    <div class="nav"><a href="./">▶ Jouer à Colours-MIX</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+    <h2>Dans la nouvelle version</h2>
+    <p>La <a href="nouveau/">nouvelle version</a> garde les règles, les graphismes et les sons d'origine. Les règles et l'ordinateur sont désormais dans <code>nouveau/engine.js</code> (sans DOM), partagé par la page, un Web Worker (<code>nouveau/ai-worker.js</code>) et les scripts de test sous node. Voici ce qui a été réalisé dans la liste ci-dessus, avec des mesures.</p>
+
+    <h3>1. Les vraies probabilités de la marche (point 1)</h3>
+    <p><code>absorb()</code> propage la distribution de position du gris pas à pas, avec exactement les règles de <code>greyOptions()</code> : voisin noir libre ou de même couleur sans pyramide, choix uniforme, immobile s'il n'a aucune option. La masse qui atteint l'anneau est comptée du côté rouge ou jaune. Deux horizons sont lus dans la même boucle : 16 pas (environ 14 s) et 40 pas (environ 36 s). Seules les cases qui portent de la masse sont parcourues, et le calcul s'arrête dès que tout est absorbé.</p>
+<pre><code>score (rouge) = 10 × (P16(rouge) - P16(jaune)) + 3 × (P40(rouge) - P40(jaune))
+              + 0.3 × (coût jaune - coût rouge) + 0.05 × (minY - minR)</code></pre>
+    <p>Vérification : sur 5 plateaux tests, les probabilités exactes coïncident avec 100 000 marches simulées à ±0,05 point (par exemple 1,07 % contre 1,11 %).</p>
+    <p><b>Coût de connexion (nouveau).</b> Les parties simulées ont montré que le gris part toujours enfermé dans une région de 1 à 4 cases, et qu'une région sans sortie donne P = 0 : l'ancienne évaluation n'avait alors que le petit terme <code>minY - minR</code> pour se guider. <code>connection()</code> calcule, par un Dijkstra à seaux, le nombre minimal de « mélanges » (primaires à ajouter ou retirer, de 0 à 3 par case) qu'il reste à faire pour ouvrir un chemin de la couleur du gris jusqu'à une bande rouge, puis jusqu'à une bande jaune, comme une distance au Hex. Sans ce terme, le niveau confirmé ne gagnait aucune manche sur 20 contre un adversaire aléatoire en 5 minutes ; avec, il en gagne 8 sur 20.</p>
+
+    <h3>2. Coupure de temps corrigée et élagage (point 2)</h3>
+    <p>Tous les coups sont d'abord notés à profondeur 1, puis triés, puis approfondis dans cet ordre (le meilleur d'abord). Le coup joué est le meilleur parmi les coups <b>approfondis</b> : on ne compare plus une valeur à 2 demi-coups avec une valeur à 1 demi-coup. Comme la valeur approfondie ne dépasse jamais la valeur à profondeur 1, la recherche s'arrête dès que la note à profondeur 1 du coup suivant est inférieure au meilleur coup approfondi, et l'examen des réponses adverses s'arrête dès que le coup ne peut plus battre ce meilleur (coupure).</p>
+    <p>Une traversée qui ne touche ni la région du gris ni ses voisins ne change pas la région : un seul représentant est gardé par case de départ (la couleur actuelle), et sa note ne dépend que de sa case d'arrivée (mémorisée). Même chose pour les réponses adverses.</p>
+    <table>
+      <tr><th>Mesure (node, 60 positions)</th><th>Version d'origine</th><th>Nouvelle version</th></tr>
+      <tr><td>Recherche complète à profondeur 2</td><td>140 ms, environ 11 900 évaluations</td><td>10,9 ms, 269 évaluations</td></tr>
+      <tr><td>Sans l'élagage des traversées sans effet</td><td>-</td><td>16,7 ms, 486 évaluations</td></tr>
+      <tr><td>Coût d'une évaluation</td><td>15 µs (1/(1+d))</td><td>48 µs (absorption sur 40 pas)</td></tr>
+    </table>
+    <p><b>Effet de la coupure</b> (150 positions, appareil lent simulé : le budget de 250 ms s'épuise après K coups approfondis) :</p>
+    <table>
+      <tr><th></th><th>Origine : coup joué non approfondi</th><th>Origine : coup différent de la recherche complète</th><th>Nouvelle : coup différent de la recherche complète</th></tr>
+      <tr><td>K = 10</td><td>99 %</td><td>43 %</td><td>12 %</td></tr>
+      <tr><td>K = 40</td><td>93 %</td><td>49 %</td><td>1 %</td></tr>
+    </table>
+    <p>Dès que la coupure intervient, l'ancienne version joue presque toujours un coup jamais approfondi, donc favorisé à tort ; la nouvelle joue presque toujours le coup de la recherche complète (perte moyenne relative 0,009 contre 0,112 à K = 10).</p>
+
+    <h3>3. Plus de blocage de l'affichage (point 3)</h3>
+    <p>La recherche tourne dans un Web Worker (<code>importScripts('engine.js')</code>). Si <code>new Worker()</code> échoue (fichier ouvert en <code>file://</code>, navigateur ancien) ou ne répond pas en 4 s, la même recherche reprend sur le fil principal, découpée en tranches de 6 ms (<code>Search.step()</code> est reprenable). Mesure dans Chromium avec le Worker désactivé : 721 images en 12 s pendant que l'ordinateur jouait, soit 60 images par seconde.</p>
+
+    <h3>4. Trois niveaux distincts (point 5)</h3>
+    <ul>
+      <li><b>Débutant</b> : 12 s par tour, profondeur 1, bruit de 2,5 et 20 % de coups pris parmi les 5 meilleurs.</li>
+      <li><b>Confirmé</b> : 10 s par tour, profondeur 1 exacte, sans bruit.</li>
+      <li><b>Expert</b> : 8 s par tour, profondeur 2 (0,45 × s1 + 0,55 × pire réponse), 300 ms de budget dans le Worker (en pratique 3 à 5 ms suffisent).</li>
+    </ul>
+
+    <h3>Matchs ordinateur contre ordinateur</h3>
+    <p>Un simulateur node reproduit le déroulement réel (marche à 130 ms par case, traversée à 75 ms par case, pas du gris de 420 ms puis pause de 150 à 800 ms, tours de 8 s, coupure de temps de l'ancienne version appliquée telle quelle) et charge l'ancien <code>game.js</code> sans le modifier. Chaque plateau est joué 4 fois (chaque IA de chaque côté, chacun commençant). Une manche sans sortie au bout de 5 minutes est déclarée nulle.</p>
+    <p>Sur les plateaux de départ normaux, deux ordinateurs se neutralisent presque toujours (le gris enfermé ne sort pas en 5 minutes), d'où des « positions ouvertes » : la région du gris (au moins 6 cases) touche déjà les deux côtés, ce qui teste la qualité tactique de l'évaluation.</p>
+    <table>
+      <tr><th>Positions ouvertes (100 manches)</th><th>Victoires</th><th>Nulles</th></tr>
+      <tr><td>Nouveau confirmé contre ancien débutant</td><td>57 - 8</td><td>35</td></tr>
+      <tr><td>Nouvel expert contre ancien confirmé</td><td>11 - 4</td><td>85</td></tr>
+      <tr><td>Nouveau confirmé contre ancien confirmé (profondeur 2)</td><td>8 - 9</td><td>83</td></tr>
+      <tr><td>Nouveau débutant contre ancien débutant</td><td>26 - 14</td><td>60</td></tr>
+      <tr><td>Nouvel expert contre nouveau confirmé</td><td>34 - 5</td><td>61</td></tr>
+      <tr><td>Nouveau confirmé contre nouveau débutant</td><td>57 - 1</td><td>42</td></tr>
+    </table>
+    <p>Contre un adversaire qui joue au hasard sur des plateaux normaux (manches gagnées en moins de 5 minutes) : ancien débutant 2/40, nouveau débutant 1/40, nouveau confirmé 28/120, nouvel expert 22/120, ancien confirmé 24/120. Face à un joueur imprécis, l'expert n'est donc pas plus rapide que l'ancien confirmé (la profondeur 2 joue prudemment), mais il le bat en face à face et réfléchit 10 à 18 fois moins longtemps (3 à 4 ms par tour contre 40 à 65 ms en moyenne).</p>
+
+    <h3>Côté joueur</h3>
+    <ul>
+      <li><b>Aperçu de la traversée</b> : sur la case de départ (ou en survolant une case noire), chaque case de la ligne montre en petit sa future couleur ; une ligne interdite est grisée, barrée et la raison est affichée.</li>
+      <li><b>Aide sur le gris</b> (option, touche <kbd>V</kbd>) : région éclaircie, pourcentage de sortie sur chaque case de l'anneau, chances rouge / jaune, effet de la traversée prévue (« vous +12 pts ») et coût de connexion de chaque camp, tous calculés avec le même moteur que l'ordinateur.</li>
+      <li><b>Indice</b> (touche <kbd>H</kbd>) : la recherche experte propose une case et une couleur.</li>
+      <li>Jauge de tour lisible (barre et secondes, rouge sous 30 %), carte de légende des mélanges, journal des traversées, records par niveau, pause (<kbd>P</kbd>, automatique quand l'onglet est caché), commandes tactiles (↺ ↻ Couleur Traverser) et traversée mémorisée quand on touche deux fois la même case.</li>
+    </ul>
+    <p><b>Pas encore fait</b> : anticiper le déplacement du gris pendant la marche vers la case de départ (point 4) et le hasard à graine pour rejouer une partie (point 6) ; le simulateur de test utilise toutefois déjà un générateur à graine.</p>
+
+    <div class="nav"><a href="nouveau/">▶ Jouer à la nouvelle version</a><a href="./">Version d'origine</a><a href="../index.html">◀ Retour à l'accueil</a></div>
   </div>
 </div>
 </body>
