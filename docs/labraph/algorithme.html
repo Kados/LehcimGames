@@ -85,7 +85,65 @@ tant que la pile n'est pas vide :
       <li><b>Une courbe de difficulté qui continue.</b> Après le niveau 15, plus rien ne change. On pourrait prolonger par des globules qui fuient le vaisseau (parcours en largeur depuis le vaisseau, recalculé à chaque changement de case). Au passage, l'aide parle d'un agrandissement tous les deux niveaux alors que le code change de taille aux niveaux 3, 5 et 8. Effort : variable.</li>
     </ol>
 
-    <div class="nav"><a href="./">▶ Jouer à LabRaph</a><a href="../index.html">◀ Retour à l'accueil</a></div>
+    <h2>Dans la nouvelle version</h2>
+    <p>La <a href="nouveau/">nouvelle version</a> sépare la logique (<code>nouveau/engine.js</code>, sans dessin ni DOM, exécutable dans node) de la page (<code>nouveau/game.js</code>). Les règles, les graphismes et les sons sont ceux de l'original ; voici ce qui a été repris de la liste ci-dessus, avec des mesures faites dans node sur les mêmes labyrinthes (scripts de test hors du site).</p>
+
+    <h3>1. Graine aléatoire déterministe et défi du jour</h3>
+    <p>Tout le hasard passe par <code>mulberry32</code>. Chaque partie reçoit une graine courte (par exemple <code>K7Q2MX</code>, affichée dans le panneau) ; la graine d'un niveau est <code>hash(graine / niveau / essai)</code>, et un second générateur dérivé sert au hasard en cours de jeu (errance des globules). Même graine, même niveau : même labyrinthe, mêmes oeufs, même position de départ (vérifié : murs et sortie identiques). Une graine peut être saisie dans les réglages, et le « Défi du jour » utilise la date comme graine : tout le monde joue la même suite de labyrinthes, et le meilleur score du jour est conservé.</p>
+
+    <h3>2. Des murs supplémentaires vraiment abattus</h3>
+    <p><code>makeMaze()</code> dresse la liste des murs internes encore fermés (y compris sur la dernière ligne et la dernière colonne), puis en tire <code>round(cases * 0.08)</code> sans remise. Sur 1 000 labyrinthes de chaque taille :</p>
+    <table>
+      <thead><tr><th>Grille</th><th>Murs réellement ouverts (original)</th><th>Nouvelle version</th></tr></thead>
+      <tbody>
+        <tr><td>14 x 10</td><td>46,9 %</td><td>100 %</td></tr>
+        <tr><td>17 x 12</td><td>46,6 %</td><td>100 %</td></tr>
+        <tr><td>28 x 20</td><td>48,1 %</td><td>100 %</td></tr>
+        <tr><td>35 x 25</td><td>48,3 %</td><td>100 %</td></tr>
+      </tbody>
+    </table>
+    <p>L'original n'ouvrait donc qu'environ la moitié des boucles annoncées : les labyrinthes de la nouvelle version offrent deux fois plus d'échappatoires face aux serpents.</p>
+
+    <h3>3. Des serpents qui ne fusionnent plus</h3>
+    <p><code>updateSnakes()</code> combine maintenant trois forces : la direction du vaisseau ; un décalage de flanc propre à chaque serpent (-1, +1, -0,5, +0,5, 0) qui s'efface quand il s'approche, pour qu'ils arrivent de plusieurs côtés ; une répulsion entre serpents à moins de 1,6 case (affaiblie près du vaisseau pour qu'ils mordent toujours). La direction tourne d'au plus 0,3 radian par pas, sans limite à moins de 1,2 case, ce qui évite qu'un serpent tourne en rond autour de sa cible. Ils volent toujours par-dessus les murs, comme dans l'original. Mesure sur un pilote automatique invincible poursuivi pendant 60 s, tous les oeufs de serpents ouverts :</p>
+    <table>
+      <thead><tr><th>Niveau</th><th>Pas avec 2 serpents à moins de 0,5 case (loin du vaisseau) : original</th><th>Nouvelle version</th><th>Dispersion des directions d'arrivée (0 = un seul côté) : original</th><th>Nouvelle version</th></tr></thead>
+      <tbody>
+        <tr><td>6</td><td>27,2 %</td><td>0,1 %</td><td>0,02</td><td>0,10</td></tr>
+        <tr><td>10</td><td>16,2 %</td><td>0,4 %</td><td>0,03</td><td>0,24</td></tr>
+        <tr><td>15</td><td>12,6 %</td><td>4,0 %</td><td>0,03</td><td>0,31</td></tr>
+      </tbody>
+    </table>
+    <p>La distance moyenne au serpent le plus proche passe de 0,4 à 0,6 case à 1,1 à 1,4 case. Le danger reste du même ordre : un pilote automatique qui ne tire pas et n'esquive pas est mordu après 11,7 s en moyenne au niveau 2 (12,6 s avant), 16,4 s au niveau 5 (17,9 s) et 14,7 s au niveau 8 (18,7 s) ; les serpents qui arrivent de plusieurs côtés sont un peu plus dangereux, mais aussi plus faciles à voir venir un par un et à abattre.</p>
+
+    <h3>4. Un temps calculé sur le vrai trajet</h3>
+    <p>À la création d'un niveau, <code>planRoute()</code> calcule une tournée vaisseau, tous les globules et oeufs, puis sortie (plus proche voisin puis 2-opt sur les distances du parcours en largeur). Mais les globules bougent : sur un même labyrinthe, deux parties d'un pilote automatique ne sont corrélées qu'à 0,40 à 0,54. La nouvelle version fait donc jouer ce pilote automatique trois fois sur le niveau lui-même (sans serpents, globules empêchés de sortir ; quelques dizaines de millisecondes à la création du niveau) et fixe <code>temps = (10 + temps du pilote * marge) * facteur de difficulté</code>, avec au moins la tournée planifiée et au moins 45 s. La marge vaut 3 au niveau 1 et baisse de 0,12 par niveau jusqu'à 1,6, puis jusqu'à 1,45 après le niveau 15. Comparaison avec une partie indépendante du pilote automatique sur les mêmes labyrinthes (150 par niveau) :</p>
+    <table>
+      <thead><tr><th>Niveau</th><th>Pilote (moy.)</th><th>Temps original</th><th>Rapport temps / pilote, original (p5 / médiane / p95)</th><th>Nouveau temps (moy.)</th><th>Rapport, nouvelle version</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>17 s</td><td>57 s</td><td>2,33 / 3,35 / 5,56</td><td>61 s</td><td>2,67 / 3,63 / 5,03</td></tr>
+        <tr><td>3</td><td>26 s</td><td>64 s</td><td>1,77 / 2,49 / 3,61</td><td>82 s</td><td>2,27 / 3,18 / 4,14</td></tr>
+        <tr><td>5</td><td>50 s</td><td>107 s</td><td>1,63 / 2,19 / 2,85</td><td>135 s</td><td>2,13 / 2,73 / 3,45</td></tr>
+        <tr><td>8</td><td>74 s</td><td>145 s</td><td>1,47 / 1,99 / 2,62</td><td>168 s</td><td>1,79 / 2,29 / 2,93</td></tr>
+        <tr><td>12</td><td>84 s</td><td>145 s</td><td>1,35 / 1,73 / 2,25</td><td>153 s</td><td>1,46 / 1,84 / 2,35</td></tr>
+        <tr><td>15</td><td>85 s</td><td>145 s</td><td>1,32 / 1,74 / 2,26</td><td>142 s</td><td>1,33 / 1,68 / 2,13</td></tr>
+        <tr><td>25</td><td>105 s</td><td>145 s</td><td>1,08 / 1,38 / 1,91</td><td>161 s</td><td>1,22 / 1,55 / 1,98</td></tr>
+      </tbody>
+    </table>
+    <p>L'écart entre les niveaux les plus serrés et les plus larges (p95 / p5) baisse de 2,39 à 1,88 au niveau 1, de 2,04 à 1,83 au niveau 3 et de 1,77 à 1,62 au niveau 25 ; le temps est corrélé à 0,4 à 0,6 avec la durée réelle d'une partie, ce qui est le plafond imposé par l'errance des globules (la tournée planifiée seule ne fait qu'un peu mieux que la formule fixe). Surtout, la marge suit maintenant une pente voulue au lieu de chuter brutalement aux niveaux 3 et 5, et les niveaux du début sont plus généreux pour un joueur humain, plus lent que le pilote.</p>
+
+    <h3>5. Une difficulté qui continue après le niveau 15</h3>
+    <p>Au-delà du niveau 15, tous les trois niveaux apportent un globule et un serpent de plus (jusqu'à 18 et 14), les vitesses continuent de monter lentement (serpents plafonnés à 0,205 case par pas, toujours moins que le vaisseau à 0,25) et, surtout, les globules apprennent à fuir : à un carrefour, avec une probabilité de 6 % par niveau au-delà du 15 (plafond 60 %), un globule à moins de 8 cases du vaisseau prend la direction qui l'éloigne le plus (parcours en largeur depuis le vaisseau, recalculé seulement quand le vaisseau change de case). Pour le pilote automatique, le niveau 25 dure 103 s au lieu de 83 s avec la courbe d'origine. L'aide dit désormais la vérité : le labyrinthe grandit aux niveaux 3, 5 et 8.</p>
+
+    <h3>Et pour le joueur</h3>
+    <ul>
+      <li><b>Virages mémorisés</b> : une direction demandée trop tôt (mur sur le côté) ne fait plus pivoter le vaisseau face au mur ; il continue tout droit et tourne au premier carrefour ouvert. Une pression brève est retenue 300 ms. Sur 200 couloirs tirés au hasard, une flèche maintenue deux cases trop tôt donne le virage voulu 0 fois sur 200 dans l'original, 200 fois sur 200 maintenant ; une pression d'un seul pas juste avant le carrefour, 0 contre 200.</li>
+      <li>Compte à rebours, pause (bouton, <kbd>P</kbd>, <kbd>Échap</kbd>, automatique quand on change d'onglet), indicateur de sortie (chevrons verts quand elle est ouverte, rouges quand un globule s'en approche), alerte « barrière » au bon moment, points qui s'affichent sur place, éclair et secousse à la mort (désactivés si l'on préfère moins d'animations).</li>
+      <li>Panneau latéral (niveau, vies, globules, balles, temps avec jauge, score, état de la barrière et de la sortie, graine), le panneau d'origine restant dessiné sur le plateau ; records personnels par difficulté et record du défi du jour.</li>
+      <li>Sur téléphone, le labyrinthe passe en portrait (mêmes nombres de cases, colonnes et lignes échangées) et une croix directionnelle se pilote en faisant glisser le doigt ; on peut aussi glisser sur le labyrinthe et le toucher pour tirer.</li>
+    </ul>
+
+    <div class="nav"><a href="nouveau/">▶ Jouer à la nouvelle version</a><a href="./">Version d'origine</a><a href="../index.html">◀ Retour à l'accueil</a></div>
   </div>
 </div>
 </body>
