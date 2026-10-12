@@ -27,11 +27,12 @@ Les sept jeux ont été réécrits en HTML5/JavaScript dans le dossier [`docs/`]
 |---|---|
 | `docs/index.html` | Page d'accueil : présentation détaillée des 7 jeux, avec un lien pour jouer et un lien vers l'explication de l'algorithme |
 | `docs/common/` | Fonctions partagées (`lehcim.js` : sprites avec couleur de transparence, sons, petit lecteur MIDI, boîtes de dialogue, meilleurs scores) et feuille de style façon Windows 3.1 |
-| `docs/<jeu>/` | Un jeu : `index.html`, `game.js` (et `engine.js` / `rules.js` pour les règles et l'adversaire de l'ordinateur), `algorithme.html` (ce que fait l'algorithme principal, pourquoi, et comment l'améliorer), `assets/` avec les planches de sprites et les sons d'origine décodés |
+| `docs/<jeu>/` | La **version d'origine** d'un jeu, fidèle au programme Windows : `index.html`, `game.js` (et `engine.js` / `rules.js` pour les règles et l'adversaire de l'ordinateur), `algorithme.html` (ce que fait l'algorithme, pourquoi, comment l'améliorer et ce qui change dans la nouvelle version), `assets/` avec les planches de sprites et les sons d'origine décodés |
+| `docs/<jeu>/nouveau/` | La **nouvelle version** du jeu : mêmes règles et mêmes graphismes, interface moderne adaptée aux téléphones, aides (annuler, indices, aperçus...) et adversaires améliorés |
 | `docs/thumbs/` | Vignettes de la page d'accueil |
 | `tools/` | Scripts Python qui décodent les formats d'origine (banques `.LIO`, ressources des exécutables NE, images FCOD, textes intégrés). `sh tools/extract_all.sh DOSSIER` régénère tout |
 
-Ce sont des réécritures, pas des émulations : le code source n'existe plus, le fonctionnement a donc été reconstruit à partir des règles intégrées aux jeux d'origine. Quand ces règles ne disaient rien (disposition des plateaux, durées, détails du score, son joué à tel moment), des choix ont été faits ; ils sont indiqués dans la fenêtre « Règles » de chaque jeu. Les adversaires de l'ordinateur, les niveaux, les modes 1 ou 2 joueurs et les meilleurs scores (enregistrés dans le navigateur) ont été conservés quand l'original les avait.
+Ce sont des réécritures, pas des émulations : le code source n'existe plus. Le fonctionnement a d'abord été reconstruit à partir des règles intégrées aux jeux, puis vérifié et corrigé en faisant tourner les programmes d'origine sous Wine (et, pour certains, en les désassemblant). Quand ces règles ne disaient rien (disposition des plateaux, durées, détails du score, son joué à tel moment), des choix ont été faits ; ils sont indiqués dans la fenêtre « Règles » de chaque jeu. Les adversaires de l'ordinateur, les niveaux, les modes 1 ou 2 joueurs et les meilleurs scores (enregistrés dans le navigateur) ont été conservés quand l'original les avait.
 
 ## Contexte technique
 
