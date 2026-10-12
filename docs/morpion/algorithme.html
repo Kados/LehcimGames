@@ -48,11 +48,12 @@
     <table>
       <tr><th>Niveau</th><th>Prof.</th><th>Larg.</th><th>Temps (attente)</th><th>Hasard</th></tr>
       <tr><td>1 (0.5s.)</td><td>0</td><td>8</td><td>- (0,3 s)</td><td>0,15</td></tr>
-      <tr><td>2 (1s.)</td><td>1</td><td>12</td><td>0,4 s (0,7 s)</td><td>marge 64</td></tr>
-      <tr><td>3 (12s)</td><td>2</td><td>14</td><td>1,2 s (1,8 s)</td><td>marge 4</td></tr>
+      <tr><td>2 (1s.)</td><td>2</td><td>6</td><td>0,4 s (0,7 s)</td><td>marge 4</td></tr>
+      <tr><td>3 (12s)</td><td>3</td><td>12</td><td>1,2 s (1,8 s)</td><td>marge 4</td></tr>
       <tr><td>4 (25s)</td><td>4</td><td>12</td><td>2,2 s (2,8 s)</td><td>marge 4</td></tr>
       <tr><td>5 (1min40s)</td><td>6</td><td>10</td><td>3,8 s (4,5 s)</td><td>marge 4</td></tr>
     </table>
+    <p>Les niveaux 2 et 3 ont été réglés après coup : avec une profondeur de 1 et du hasard, le niveau 2 perdait contre le niveau 1 devenu défensif (1 victoire, 7 nulles, 12 défaites sur 20 parties en 10-10). Avec ces réglages, chaque niveau bat le précédent en 10-10 : niveau 2 contre 1, 5 - 15 - 0 ; niveau 3 contre 2, 7 - 8 - 5 ; niveau 4 contre 3, 3 - 7 - 2.</p>
     <p>Les durées du menu d'origine valaient pour le plateau 10-10 sur les PC de 1995 ; sous Wine aujourd'hui, l'original répond presque tout de suite au niveau 1, en 2 à 4 s au niveau 3 et en une dizaine de secondes au niveau 5. Côté interface, <code>game.js</code> affiche « Patience ! / Je réfléchis ... », lance <code>bestMove</code> 40 ms plus tard, attend au moins la durée indiquée entre parenthèses (le libellé du niveau est celui du menu d'origine, « Prof. » la profondeur et « Larg. » la largeur ; au niveau 1, le hasard est la probabilité de passer au candidat suivant), puis fait tomber la bille orange depuis le haut du plateau le long de sa colonne, à 100 pixels par seconde comme l'original. Chaque alignement est barré d'un trait rouge continu de 3 pixels.</p>
 
     <h2>Pourquoi ce choix</h2>
@@ -90,7 +91,7 @@
       <tr><td>Profondeur moyenne au niveau 5</td><td>6 au plus (limite du niveau, 3,8 s)</td><td>8 à 8,3 en 1,4 s sur la page ; 8,4 (12-12) à 9,1 (8-8) en 2,5 s dans le worker, plus la quiescence</td></tr>
       <tr><td>Blocage de la page pendant la réflexion</td><td>jusqu'à 3,8 s (niveau 5)</td><td>aucun avec le worker ; sans worker, 1,4 s au plus</td></tr>
     </table>
-    <p><b>Matchs contre le joueur du portage d'origine, au même niveau</b> (4 premières billes tirées au hasard près du centre, qui commence alterné ; chacun avec le temps de son niveau, le nouveau avec le temps du worker aux niveaux 4 et 5, soit 1,5 s contre 2,2 s au niveau 4 et 2,5 s contre 3,8 s au niveau 5 ; V, N, D = victoires, nulles et défaites de la nouvelle version, une victoire = plus de points) :</p>
+    <p><b>Matchs contre le joueur du portage d'origine, au même niveau</b> (mesurés avant le réglage des niveaux 2 et 3 de la version d'origine décrit plus haut) (4 premières billes tirées au hasard près du centre, qui commence alterné ; chacun avec le temps de son niveau, le nouveau avec le temps du worker aux niveaux 4 et 5, soit 1,5 s contre 2,2 s au niveau 4 et 2,5 s contre 3,8 s au niveau 5 ; V, N, D = victoires, nulles et défaites de la nouvelle version, une victoire = plus de points) :</p>
     <table>
       <tr><th>Match</th><th>V</th><th>N</th><th>D</th><th>Points</th></tr>
       <tr><td>Niveau 1, 8-8, 30 parties</td><td>1</td><td>27</td><td>2</td><td>4 - 5</td></tr>

@@ -207,8 +207,8 @@
   var LEVELS = [
     null,
     { depth: 0, width: 8, time: 100, noise: 0.15, wait: 300 },
-    { depth: 1, width: 12, time: 400, noise: 0.05, wait: 700 },
-    { depth: 2, width: 14, time: 1200, noise: 0, wait: 1800 },
+    { depth: 2, width: 6, time: 400, noise: 0, wait: 700 },
+    { depth: 3, width: 12, time: 1200, noise: 0, wait: 1800 },
     { depth: 4, width: 12, time: 2200, noise: 0, wait: 2800 },
     { depth: 6, width: 10, time: 3800, noise: 0, wait: 4500 }
   ];
