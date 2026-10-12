@@ -11,136 +11,144 @@
   <div class="titlebar"><a href="../index.html">◀ LehcimGames</a><span class="grow"></span><span>LabRaph : l'algorithme</span></div>
   <div class="article">
     <h1>LabRaph : comment fonctionne l'algorithme</h1>
-    <p class="lead">LabRaph tire au hasard un labyrinthe à chaque niveau, y lâche des globules qui errent de case en case et des serpents qui foncent sur toi à vol d'oiseau. Tout tient dans <code>game.js</code> : un générateur de labyrinthe par exploration en profondeur, un parcours en largeur qui calcule la distance de chaque case à la sortie, deux comportements très simples pour les créatures, et une fonction <code>levelParams(n)</code> qui règle la difficulté.</p>
+    <p class="lead">LabRaph tire un nouveau labyrinthe à chaque niveau (et à chaque vie perdue), cache des globules et des serpents dans des oeufs, puis fait tout avancer case par case, de 4 pixels toutes les 50 ms. Les règles décrites ici sont celles du programme d'origine (LabRaph.exe, Delphi 1), relevées en le désassemblant et en le faisant tourner, et reproduites dans <code>game.js</code> : une table des niveaux, un générateur de labyrinthe à long chemin principal, des globules qui longent le mur de gauche et des serpents qui choisissent leur route à chaque carrefour.</p>
 
     <h2>Ce que fait l'algorithme</h2>
 
     <h3>La boucle de jeu</h3>
-    <p>La logique avance par pas fixes de <code>TICK = 50</code> ms, l'intervalle du minuteur de l'original. La fonction <code>frame</code>, appelée par <code>requestAnimationFrame</code>, accumule le temps écoulé (plafonné à 500 ms pour ne pas rattraper des secondes entières après un onglet en arrière-plan) et appelle <code>step()</code> autant de fois que nécessaire, puis dessine. Chaque pas de jeu exécute dans l'ordre :</p>
-<pre><code>updateShip()     // déplacement / rotation du vaisseau
-updateEggs()     // ouverture et éclosion des oeufs
-updateGlobs()    // errance des globules
-updateSnakes()   // poursuite des serpents
-updateBullets()  // balles, en deux demi-pas
-checkContacts()  // globule mangé (+2) ou mort par serpent
-barrière--, temps--, labyrinthe invisible à 20 s de la fin</code></pre>
-    <p>Toutes les positions sont exprimées en cases, pas en pixels. Le vaisseau et les globules se déplacent d'une case à l'autre avec un paramètre <code>t</code> qui va de 0 à 1 ; ils ne choisissent une nouvelle direction qu'au centre d'une case. Le vaisseau avance de <code>SHIP_SPEED = 0.25</code> case par pas (5 cases par seconde) et doit d'abord pivoter, chaque quart de tour durant <code>TURN_TICKS = 2</code> pas.</p>
+    <p>La logique avance par pas fixes de <code>TICK = 50</code> ms, l'intervalle du minuteur (TTimer) de l'original. La fonction <code>frame</code>, appelée par <code>requestAnimationFrame</code>, accumule le temps écoulé (plafonné à 500 ms) et appelle <code>step()</code> autant de fois que nécessaire, puis dessine. Chaque pas exécute dans l'ordre :</p>
+<pre><code>horloge          // 20 pas = 1 seconde ; temps écoulé = vie perdue
+effacement       // pendant les 20 dernières secondes
+barrière         // descend en 6 pas, reste, remonte en 6 pas (60 pas en tout)
+updateBullets()  // une demi-case par pas
+vaisseau         // advance(ship, chooseShip) ; sortie gagnée ?
+globules         // ouverture des oeufs, chooseGlob, fuite par la sortie, contact (+2)
+serpents         // ouverture des oeufs, chooseSnake, contact (mort)
+tir demandé      // la balle part au pas suivant l'appui sur Espace</code></pre>
 
-    <h3>Génération du labyrinthe</h3>
-    <p><code>makeMaze(cols, rows)</code> part d'une grille où chaque case a ses quatre murs (valeur 15 : bits 1 haut, 2 droite, 4 bas, 8 gauche). C'est l'algorithme classique du <i>recursive backtracker</i>, écrit avec une pile explicite :</p>
-<pre><code>pile = [case au hasard]
-tant que la pile n'est pas vide :
-  c = sommet de la pile
-  voisins = voisins de c pas encore visités
-  si aucun : dépiler
-  sinon : en choisir un au hasard, abattre le mur commun, l'empiler</code></pre>
-    <p>On obtient un labyrinthe parfait (un seul chemin entre deux cases), avec de longs couloirs sinueux. Pour offrir des échappatoires face aux serpents, le code abat ensuite <code>round(cols * rows * 0.08)</code> murs supplémentaires au hasard (vers la droite ou vers le bas), ce qui crée des boucles. Enfin, la sortie est percée dans le mur extérieur, en haut, en bas ou à gauche (le côté droit touche le panneau).</p>
-    <p><code>exitDistances(m)</code> fait alors un parcours en largeur depuis la case de sortie et stocke dans un <code>Int32Array</code> la distance en déplacements de chaque case à la sortie. Cette carte sert trois fois : placer le vaisseau loin de la sortie (une case tirée parmi celles à au moins 60 % de la distance maximale), interdire aux créatures les cases à moins de 4 pas de la sortie, et guider les globules.</p>
-
-    <h3>L'errance des globules</h3>
-    <p><code>chooseGlobDir(o)</code> est appelée quand un globule arrive au centre d'une case. Elle liste les directions ouvertes (la sortie compte seulement si la barrière n'est pas active), retire le demi-tour sauf en cul-de-sac, puis :</p>
-    <ul>
-      <li>avec la probabilité <code>bias</code> (0,02 par niveau, plafonnée à 0,15), le globule prend la direction qui fait baisser sa distance à la sortie dans la carte du parcours en largeur, ou sort directement s'il est sur la case de sortie ;</li>
-      <li>sinon, il choisit une direction au hasard parmi les options restantes.</li>
-    </ul>
-    <p>Au niveau 1, un globule ne suit la pente qu'à 2 % des carrefours ; dès le niveau 8, à 15 %, ce qui rend la barrière (<code>BARRIER_TICKS = 60</code>, soit 3 s) bien plus utile.</p>
-
-    <h3>Les serpents : poursuite à travers les murs</h3>
-    <p><code>updateSnakes()</code> est la poursuite la plus simple qui soit : à chaque pas, le serpent avance en ligne droite vers la position actuelle du vaisseau, d'au plus <code>snakeSpeed</code> case, sans regarder les murs. Aucun calcul de chemin : seule compte la distance à vol d'oiseau. La seule défense est la vitesse (le vaisseau va environ 3 fois plus vite qu'un serpent au niveau 1, 1,5 fois au niveau 12) et les balles.</p>
-
-    <h3>Les oeufs</h3>
-    <p>A la création du niveau, la moitié des globules (arrondie au-dessus) sont posés directement, les autres dans des oeufs ; tous les serpents naissent dans des oeufs, placés à plus de 4,7 cases du vaisseau. <code>updateEggs()</code> ouvre un oeuf quand le vaisseau entre dans son rayon : <code>EGG_RANGE_GLOB = 1.6</code> case pour un globule, <code>EGG_RANGE_SNAKE = 3.2</code> pour un serpent (d'où la remarque de l'aide : un oeuf qui s'ouvre de loin cache un serpent). L'éclosion dure <code>(cols - 1) * 2</code> pas, de 18 pas en grande taille à 6 pas en petite. Les globules encore dans leur oeuf comptent dans <code>globsLeft()</code> : la sortie reste fermée au joueur tant qu'il ne les a pas fait éclore et détruits.</p>
-
-    <h3>Collisions</h3>
-    <p>Les contacts sont de simples tests de distance au carré : globule mangé si <code>dist2 &lt; 0.4</code>, mort par serpent si <code>&lt; 0.3</code>. Les balles (<code>BULLET_SPEED = 0.5</code> case par pas) avancent en deux demi-pas pour ne pas traverser une créature ; à chaque franchissement de la ligne médiane entre deux cases, elles consultent le mur et s'y écrasent s'il est fermé.</p>
-
-    <h3>La montée en difficulté</h3>
-    <p><code>levelParams(n)</code> calcule tout à partir du numéro de niveau : taille de case (40, 32, 20 puis 16 pixels), donc taille de la grille, nombre de globules <code>min(3 + n, 14)</code>, de serpents <code>min(1 + floor((n - 1) * 2 / 3), 10)</code>, temps <code>round(40 + cases * 0.12)</code> secondes, vitesses et attirance de la sortie. Chaque niveau donne aussi 1 balle (2 dans 30 % des cas), avec un plafond de 5.</p>
+    <h3>La table des niveaux</h3>
+    <p><code>levelParams(n)</code> lit deux tables de l'original. La première donne la taille des cases (le « zoom ») de chaque niveau : 40, 32, 40, 32, 40, 32, 20, 40, 32, 20, 16, 40, 32, 20, 16, 40, 32, 20, 16, 32, 20, 16, 20, 16, 20, puis 16. Le zoom fixe la taille du labyrinthe, celle des sprites et la durée de traversée d'une case :</p>
     <table>
-      <thead><tr><th>Niveau</th><th>Grille</th><th>Globules</th><th>Serpents</th><th>Temps</th><th>Vit. globule</th><th>Vit. serpent</th><th>bias</th></tr></thead>
+      <thead><tr><th>Case</th><th>Labyrinthe</th><th>Sprite</th><th>Pas par case</th><th>Chemin principal</th></tr></thead>
       <tbody>
-        <tr><td>1</td><td>14 x 10</td><td>4</td><td>1</td><td>57 s</td><td>0,105</td><td>0,088</td><td>0,02</td></tr>
-        <tr><td>3</td><td>17 x 12</td><td>6</td><td>2</td><td>64 s</td><td>0,115</td><td>0,104</td><td>0,06</td></tr>
-        <tr><td>5</td><td>28 x 20</td><td>8</td><td>3</td><td>107 s</td><td>0,125</td><td>0,120</td><td>0,10</td></tr>
-        <tr><td>8</td><td>35 x 25</td><td>11</td><td>5</td><td>145 s</td><td>0,140</td><td>0,144</td><td>0,15</td></tr>
-        <tr><td>12+</td><td>35 x 25</td><td>14</td><td>8 à 10</td><td>145 s</td><td>0,150</td><td>0,170</td><td>0,15</td></tr>
+        <tr><td>40 px</td><td>13 x 10</td><td>24 px</td><td>10 (0,5 s)</td><td>55 cases</td></tr>
+        <tr><td>32 px</td><td>16 x 12</td><td>20 px</td><td>8 (0,4 s)</td><td>90 cases</td></tr>
+        <tr><td>20 px</td><td>27 x 20</td><td>12 px</td><td>5 (0,25 s)</td><td>180 cases</td></tr>
+        <tr><td>16 px</td><td>34 x 25</td><td>8 px</td><td>4 (0,2 s)</td><td>300 cases</td></tr>
       </tbody>
     </table>
-    <p>Les vitesses sont en cases par pas de 50 ms ; le vaisseau reste à 0,25.</p>
+    <p>La seconde donne le nombre de globules (égal au nombre de serpents), le temps et les balles gagnées :</p>
+    <table>
+      <thead><tr><th>Niveaux</th><th>Globules</th><th>Serpents</th><th>Temps</th><th>Balles</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>1</td><td>1</td><td>90 s</td><td>2 au départ</td></tr>
+        <tr><td>2</td><td>1</td><td>1</td><td>100 s</td><td>+1</td></tr>
+        <tr><td>3-4</td><td>2</td><td>2</td><td>110 s</td><td>+2</td></tr>
+        <tr><td>5-7</td><td>3</td><td>3</td><td>120 s</td><td>+3</td></tr>
+        <tr><td>8-11</td><td>4</td><td>4</td><td>130 s</td><td>+4</td></tr>
+        <tr><td>12-15</td><td>5</td><td>5</td><td>140 s</td><td>+5</td></tr>
+        <tr><td>16-19</td><td>5</td><td>5</td><td>150 s</td><td>+4</td></tr>
+        <tr><td>20-22</td><td>5</td><td>5</td><td>160 s</td><td>+3</td></tr>
+        <tr><td>23-24</td><td>5</td><td>5</td><td>170 s</td><td>+2</td></tr>
+        <tr><td>25 et plus</td><td>5</td><td>5</td><td>180 s</td><td>+1</td></tr>
+      </tbody>
+    </table>
+    <p>Les balles d'un nouveau niveau valent les balles restantes plus le bonus, avec un plafond de 5. Après une vie perdue, le niveau recommence dans un nouveau labyrinthe avec les balles qu'on avait au début du niveau. On a 3 vies et on n'en gagne jamais ; le score est conservé.</p>
+
+    <h3>Génération du labyrinthe</h3>
+    <p><code>makeMaze(cols, rows, pathLen)</code> travaille sur une grille où chaque case a ses quatre murs (valeur 15 : bits 1 haut, 2 droite, 4 bas, 8 gauche). Le vaisseau part toujours de la colonne de gauche (ligne tirée entre la 2e et l'avant-dernière), et la sortie est une porte arrondie dans la colonne de pierre qui borde le labyrinthe à droite, à une ligne au hasard. L'original construit d'abord un long chemin principal entre les deux :</p>
+<pre><code>chemin = vers la droite sur la ligne du vaisseau, puis vertical, puis vers la droite jusqu'à la sortie
+tant que chemin trop court (55 / 90 / 180 / 300 cases) :
+  prendre un tronçon droit de 1 à 4 cases
+  le remplacer par un détour rectangulaire de 1 ou 2 cases de profondeur, d'un côté,
+  si toutes les cases du détour sont libres
+ensuite, tant qu'il reste des cases libres :
+  partir d'une case déjà creusée (de préférence la dernière)
+  creuser vers une voisine libre (de préférence tout droit)</code></pre>
+    <p>On obtient presque toujours un arbre (mesuré sur l'original : 129 ouvertures pour 130 cases), avec un chemin principal très sinueux et des branches en cul-de-sac. Le portage reproduit les tailles, la longueur du chemin principal et l'aspect ; il ne recopie pas l'original instruction par instruction, et ne reproduit donc pas ses rares poches fermées de 1 à 6 cases.</p>
+    <p>Les oeufs sont posés sur des cases distinctes, entre la 4e et la (colonnes - 4)e colonne et entre la 2e et l'avant-dernière ligne : jamais tout près du départ ni de la sortie.</p>
+
+    <h3>Le mouvement case par case</h3>
+    <p>Le vaisseau, les globules et les serpents avancent tous de <code>STEP = 4</code> pixels par pas, à tous les niveaux : traverser une case prend <code>n = T / 4</code> pas. <code>advance(o, choose)</code> ne choisit une direction qu'au centre d'une case ; dès le premier pas, la case « logique » du mobile devient la case suivante (c'est elle qui compte pour les oeufs, les blocages et la sortie), et sa position en pixels vaut le centre de cette case moins <code>(n - k) * 4</code>. Les créatures se bloquent entre elles et sur les oeufs (table <code>occ</code> des cases occupées) ; le vaisseau ne se bloque que sur les murs.</p>
+    <p><code>chooseShip()</code> garde la pile des flèches tenues : la plus récente qui donne sur une case ouverte l'emporte, sinon une plus ancienne ouverte ; si aucune n'est ouverte, le vaisseau se tourne seulement. Relâcher une flèche ne l'arrête qu'au centre de la case suivante. Avec <kbd>W</kbd> tenu, il se tourne sans avancer (pour viser). Une rotation ne coûte pas de temps : la planche de sprites contient une rangée animée par couple ancienne / nouvelle direction (12 rangées), jouée pendant le déplacement.</p>
+
+    <h3>Les oeufs</h3>
+    <p>Au début du niveau, tous les globules et tous les serpents sont dans des oeufs, dessinés pareil. Un oeuf de globule s'ouvre quand le vaisseau est à 2 cases ou moins <b>et</b> sur la même ligne ou la même colonne (les murs ne comptent pas) ; un oeuf de serpent s'ouvre quand le vaisseau est à 3 cases ou moins dans les deux axes, donc aussi en biais. D'où la remarque de l'aide : un oeuf qui s'ouvre de loin cache un serpent. L'ouverture dure <code>n - 1</code> pas. Un oeuf compte comme la créature qu'il contient : le toucher rapporte 2 points (globule) ou tue (serpent), et la sortie reste fermée tant qu'un oeuf de globule n'est pas détruit.</p>
+
+    <h3>Les globules : la main gauche et la fuite</h3>
+    <p><code>chooseGlob()</code> applique la règle de la main gauche : au centre de chaque case, tourner à gauche si c'est ouvert, sinon tout droit, sinon à droite, sinon demi-tour. Dans un labyrinthe sans boucle, cette règle parcourt tout l'arbre et finit forcément par passer devant la sortie : le globule s'échappe dès qu'il entre dans la case de sortie, et la vie est perdue. Quand le vaisseau est à 2 cases ou moins sur sa ligne ou sa colonne, le globule fuit : d'abord à l'opposé du vaisseau, puis sur les côtés, jamais vers lui.</p>
+
+    <h3>Les serpents : dans les couloirs, vers le vaisseau aux carrefours</h3>
+    <p><code>chooseSnake()</code> distingue deux cas. Dans un couloir ou un virage (2 ouvertures au plus), le serpent continue sa route, et ne fait demi-tour qu'au fond d'un cul-de-sac. A un carrefour (3 ou 4 ouvertures), il essaie les directions dans un ordre fixé par la position du vaisseau : d'abord celle qui réduit l'écart sur l'axe le plus long, puis celle de l'autre axe, puis les deux autres. Il compare seulement les positions à vol d'oiseau, sans regarder les murs plus loin : un serpent peut donc s'engager dans une impasse qui « va vers » le vaisseau. Il ne passe jamais à travers un mur et ne s'échappe pas par la sortie.</p>
+
+    <h3>Contacts et tir</h3>
+    <p><code>touch(a, b)</code> reprend le test de l'original : deux sprites se touchent s'ils sont sur la même rangée (ou la même colonne) de pixels et à moins d'une taille de sprite l'un de l'autre. Comme tout se déplace dans l'axe des couloirs, ce test simple suffit.</p>
+    <p><kbd>Espace</kbd> pose une demande de tir, traitée au pas suivant s'il reste des balles. La balle apparaît au centre de la case suivante dans la direction du vaisseau (si un mur est juste devant, elle éclate aussitôt), avance d'une demi-case par pas et éclate sur le premier mur (son 2 ou 3 au hasard). <code>updateBullets()</code> lui fait détruire au plus un globule ou oeuf de globule par pas (1 point) en continuant sa course ; elle s'arrête sur un serpent ou un oeuf de serpent (0 point).</p>
+
+    <h3>Barrière, temps et murs qui s'effacent</h3>
+    <p><kbd>Entrée</kbd>, une fois par niveau et seulement si aucun globule n'est déjà dans la sortie, interdit la case de sortie aux créatures pendant 60 pas (3 s) ; le vaisseau, lui, passe. Le temps est un compte de secondes. A 20 secondes de la fin, le son 7 retentit et <code>eraseWalls()</code> recouvre toutes les 6 pas un point tiré au hasard par l'animation « sol qui pousse » (6 images), à cheval sur 4 cases : environ 66 points en 20 s, les murs disparaissent peu à peu de l'écran mais continuent de bloquer.</p>
+
+    <h3>Fin de niveau, score et sons</h3>
+    <p>Le niveau est gagné quand le vaisseau est au centre de la case de sortie et qu'il ne reste aucun globule, oeufs compris ; sinon la sortie n'est qu'un cul-de-sac. <code>endLevel()</code> efface les balles, fait exploser les créatures restantes, montre la tête du globule échappé ou du serpent tueur, fait exploser le vaisseau (ou le fait partir en « warp »), puis affiche le message. Le score ne compte que les globules : 2 points au contact, 1 point par balle ; il n'y a pas de bonus de fin de niveau. Sons : 1 barrière, 2 et 3 balle contre un mur, 4 serpent touché, 5 globule échappé ou vaisseau tué, 6 globule détruit, 7 début des 20 dernières secondes, 8 tir, 9 sortie ; 10 et 11 servent de musique, l'un des deux au hasard, en boucle pendant tout le niveau.</p>
 
     <h2>Pourquoi ce choix</h2>
-    <p><b>Le backtracker</b> fait des labyrinthes à longs couloirs et peu de carrefours, idéaux pour un jeu où l'on traque des globules : ils ne peuvent pas fuir dans tous les sens. Il tient en vingt lignes et s'exécute en une fraction de milliseconde sur 875 cases. Le défaut d'un labyrinthe parfait (un seul chemin, donc aucun moyen d'échapper à un serpent qui arrive en face) est corrigé par les 8 % de murs abattus.</p>
-    <p><b>Le parcours en largeur unique</b> est calculé une fois par niveau, car la sortie ne bouge pas. Ensuite, guider un globule vers la sortie coûte une lecture de tableau : inutile de lancer un A* pour chaque créature à chaque carrefour.</p>
-    <p><b>La marche aléatoire</b> rend les globules imprévisibles ; l'interdiction du demi-tour leur fait parcourir les couloirs au lieu de trembler sur place, et <code>bias</code> en fait une menace croissante.</p>
-    <p><b>La poursuite en ligne droite</b> des serpents vient de la règle originale (ils « volent au-dessus du labyrinthe »). Elle est très lisible : on voit d'où vient le danger, et elle crée la tension voulue sans IA coûteuse.</p>
-    <p><b>Le pas fixe de 50 ms</b> garde le jeu identique quelle que soit la fréquence de l'écran et reproduit le rythme de l'original. La simulation coûte quelques microsecondes par pas : pas besoin de Web Worker ni de dépendance.</p>
-    <p>Le prix à payer : le hasard pur (<code>Math.random</code>) rend les parties impossibles à rejouer à l'identique, le temps alloué ne dépend que du nombre de cases et pas du trajet réel, et plusieurs serpents finissent par se superposer en un seul point puisqu'ils visent tous la même cible.</p>
+    <p><b>Un long chemin principal</b> garantit que la sortie est loin du départ en nombre de cases, même dans un petit labyrinthe de 13 x 10 : 55 cases à parcourir au minimum, soit 27 s au zoom 40. Les branches en cul-de-sac servent de cachettes aux oeufs et de pièges aux serpents.</p>
+    <p><b>La main gauche</b> rend les globules prévisibles pour qui observe (ils longent les murs) mais inévitablement dangereux : dans un arbre, elle visite tout, sortie comprise. La barrière et la poursuite deviennent alors des décisions de timing. La fuite à 2 cases oblige à les coincer dans un cul-de-sac ou à leur tirer dessus.</p>
+    <p><b>Le choix glouton des serpents</b> ne coûte presque rien (aucun parcours de graphe) et crée exactement la remarque de l'aide : ils vous cherchent, mais un mur peut les égarer. Avec la même vitesse que le vaisseau, un serpent derrière soi ne rattrape pas ; un serpent bien placé à un carrefour est mortel.</p>
+    <p><b>Tout à 4 pixels par pas</b> rend le jeu entièrement discret : positions entières, tests de contact exacts, et le même rythme quelle que soit la machine. La difficulté vient du zoom (une case traversée en 0,2 s au lieu de 0,5 s) et du nombre d'oeufs, pas d'une vitesse croissante.</p>
+    <p>Le prix à payer : le hasard pur (<code>Math.random</code>) rend les parties impossibles à rejouer, et rien ne vérifie un labyrinthe tiré : un oeuf de serpent peut s'ouvrir dès le départ, et au zoom 16 le plus court trajet par tous les oeufs de globules peut dépasser les trois quarts du temps alloué. Enfin, au clavier, un virage demandé un peu trop tôt arrête le vaisseau face au mur, et une pression trop brève entre deux centres de case est perdue.</p>
 
     <h2>Comment l'améliorer</h2>
     <ol>
-      <li><b>Une graine aléatoire déterministe.</b> Remplacer <code>rnd()</code> et les deux appels directs à <code>Math.random()</code> (balle bonus dans <code>startLevel()</code>, tirage du <code>bias</code> dans <code>chooseGlobDir()</code>) par un petit générateur à graine (mulberry32, une dizaine de lignes). Gain : niveaux rejouables, tests automatisés reproductibles via le crochet <code>window.LabRaph</code> déjà exposé, et possibilité d'un « labyrinthe du jour ». Effort : une heure.</li>
-      <li><b>Séparer les serpents.</b> Ajouter à <code>updateSnakes()</code> une petite force de répulsion entre serpents proches (steering de type <i>separation</i>) et éventuellement un rayon de virage limité. Les serpents arriveraient de plusieurs côtés au lieu de fusionner. Effort : une demi-journée.</li>
-      <li><b>Un temps calculé sur le vrai trajet.</b> <code>time</code> vaut <code>40 + cases * 0.12</code>, que les globules soient groupés ou dispersés. Avec la carte <code>lv.dist</code> et un parcours en largeur depuis le vaisseau, on peut estimer la longueur d'une tournée qui passe par tous les globules et oeufs puis la sortie, et fixer le temps à cette estimation multipliée par une marge selon le niveau. Effort : une journée, à placer dans <code>startLevel()</code>.</li>
-      <li><b>Des murs supplémentaires vraiment abattus.</b> La boucle des 8 % tire des murs au hasard, dont certains sont déjà ouverts, et n'abat jamais de mur sur la dernière ligne ni la dernière colonne. Tirer plutôt parmi la liste des murs internes encore fermés garantirait le nombre de boucles annoncé. Effort : une heure dans <code>makeMaze()</code>.</li>
-      <li><b>Une courbe de difficulté qui continue.</b> Après le niveau 15, plus rien ne change. On pourrait prolonger par des globules qui fuient le vaisseau (parcours en largeur depuis le vaisseau, recalculé à chaque changement de case). Au passage, l'aide parle d'un agrandissement tous les deux niveaux alors que le code change de taille aux niveaux 3, 5 et 8. Effort : variable.</li>
+      <li><b>Une graine aléatoire déterministe.</b> Remplacer <code>rnd()</code> par un petit générateur à graine (mulberry32, une dizaine de lignes) : niveaux rejouables, tests automatisés reproductibles via le crochet <code>window.LabRaph</code>, et un « labyrinthe du jour ». Effort : une heure.</li>
+      <li><b>Vérifier chaque niveau tiré.</b> Un parcours en largeur depuis le départ suffit à vérifier que toutes les cases et la sortie sont accessibles (l'original laisse parfois des poches fermées, qui pourraient contenir un oeuf), qu'aucun oeuf de serpent ne s'ouvre sur la case de départ, et qu'une tournée départ, oeufs de globules, sortie tient dans le temps. Un niveau qui échoue est simplement retiré, avec les mêmes règles. Effort : une demi-journée.</li>
+      <li><b>Mémoriser les virages.</b> Garder la dernière flèche tapée jusqu'au centre de case suivant, et laisser le vaisseau continuer tout droit quand le virage demandé est encore fermé, au lieu de l'arrêter. C'est une aide de saisie : les déplacements restent case par case à 4 pixels par pas. Effort : une heure dans <code>chooseShip()</code>.</li>
+      <li><b>Séparer la logique du dessin.</b> Toute la règle tient dans des fonctions pures de l'état du niveau ; les sortir dans un module sans DOM permet de les tester dans node (statistiques sur des milliers de labyrinthes). Effort : une demi-journée.</li>
     </ol>
 
     <h2>Dans la nouvelle version</h2>
-    <p>La <a href="nouveau/">nouvelle version</a> sépare la logique (<code>nouveau/engine.js</code>, sans dessin ni DOM, exécutable dans node) de la page (<code>nouveau/game.js</code>). Les règles, les graphismes et les sons sont ceux de l'original ; voici ce qui a été repris de la liste ci-dessus, avec des mesures faites dans node sur les mêmes labyrinthes (scripts de test hors du site).</p>
+    <p>La <a href="nouveau/">nouvelle version</a> sépare la logique (<code>nouveau/engine.js</code>, sans dessin ni DOM, exécutable dans node) de la page (<code>nouveau/game.js</code>). Avec la difficulté « Original » (celle par défaut), les règles sont exactement celles décrites plus haut : même table des niveaux, mêmes tailles, même générateur, mêmes oeufs, globules, serpents, balles, barrière, effacement, sons et musique. Voici ce qu'elle ajoute, avec des mesures faites dans node sur le moteur lui-même.</p>
 
     <h3>1. Graine aléatoire déterministe et défi du jour</h3>
-    <p>Tout le hasard passe par <code>mulberry32</code>. Chaque partie reçoit une graine courte (par exemple <code>K7Q2MX</code>, affichée dans le panneau) ; la graine d'un niveau est <code>hash(graine / niveau / essai)</code>, et un second générateur dérivé sert au hasard en cours de jeu (errance des globules). Même graine, même niveau : même labyrinthe, mêmes oeufs, même position de départ (vérifié : murs et sortie identiques). Une graine peut être saisie dans les réglages, et le « Défi du jour » utilise la date comme graine : tout le monde joue la même suite de labyrinthes, et le meilleur score du jour est conservé.</p>
+    <p>Tout le hasard passe par <code>mulberry32</code>. Chaque partie reçoit une graine courte (par exemple <code>K7Q2MX</code>, affichée dans le panneau) ; la graine d'un niveau est <code>hash(graine / niveau / essai)</code>, et un second générateur dérivé sert au hasard en cours de jeu (ricochets, points effacés). Même graine, même niveau, même essai : même labyrinthe, mêmes oeufs, même départ (vérifié : murs identiques). Une graine peut être saisie dans les réglages, et le « Défi du jour » utilise la date comme graine, avec les règles d'origine.</p>
 
-    <h3>2. Des murs supplémentaires vraiment abattus</h3>
-    <p><code>makeMaze()</code> dresse la liste des murs internes encore fermés (y compris sur la dernière ligne et la dernière colonne), puis en tire <code>round(cases * 0.08)</code> sans remise. Sur 1 000 labyrinthes de chaque taille :</p>
+    <h3>2. Des niveaux vérifiés avant d'être joués</h3>
+    <p><code>checkLevel()</code> refuse un labyrinthe tiré, qui est alors tiré à nouveau (40 essais au plus), si une case ou la sortie est inaccessible depuis le départ, si un oeuf de serpent s'ouvrirait sur la case de départ (3 cases ou moins dans les deux axes), ou si la plus courte tournée départ, tous les oeufs de globules, sortie (plus proche voisin puis 2-opt sur les distances du parcours en largeur), parcourue à 4 pixels par pas, dépasse 60 % du temps du niveau. Les règles ne changent pas ; seuls les tirages injouables ou presque sont écartés. Sur 2 000 tirages bruts par niveau :</p>
     <table>
-      <thead><tr><th>Grille</th><th>Murs réellement ouverts (original)</th><th>Nouvelle version</th></tr></thead>
+      <thead><tr><th>Niveau</th><th>Labyrinthe</th><th>Temps</th><th>Oeuf de serpent au départ</th><th>Tournée &gt; 60 % du temps</th><th>Tournée médiane / max (tirages bruts)</th></tr></thead>
       <tbody>
-        <tr><td>14 x 10</td><td>46,9 %</td><td>100 %</td></tr>
-        <tr><td>17 x 12</td><td>46,6 %</td><td>100 %</td></tr>
-        <tr><td>28 x 20</td><td>48,1 %</td><td>100 %</td></tr>
-        <tr><td>35 x 25</td><td>48,3 %</td><td>100 %</td></tr>
+        <tr><td>1</td><td>13 x 10</td><td>90 s</td><td>11,8 %</td><td>0,1 %</td><td>29 s / 58 s</td></tr>
+        <tr><td>3</td><td>13 x 10</td><td>110 s</td><td>22,6 %</td><td>0 %</td><td>31 s / 66 s</td></tr>
+        <tr><td>7</td><td>27 x 20</td><td>120 s</td><td>5,0 %</td><td>4,2 %</td><td>54 s / 95 s</td></tr>
+        <tr><td>11</td><td>34 x 25</td><td>130 s</td><td>3,8 %</td><td>25,6 %</td><td>72 s / 114 s</td></tr>
+        <tr><td>12</td><td>13 x 10</td><td>140 s</td><td>46,5 %</td><td>0 %</td><td>37 s / 72 s</td></tr>
+        <tr><td>15</td><td>34 x 25</td><td>140 s</td><td>5,0 %</td><td>19,1 %</td><td>74 s / 122 s</td></tr>
+        <tr><td>19</td><td>34 x 25</td><td>150 s</td><td>5,2 %</td><td>7,3 %</td><td>74 s / 112 s</td></tr>
+        <tr><td>25</td><td>27 x 20</td><td>180 s</td><td>8,9 %</td><td>0 %</td><td>60 s / 101 s</td></tr>
       </tbody>
     </table>
-    <p>L'original n'ouvrait donc qu'environ la moitié des boucles annoncées : les labyrinthes de la nouvelle version offrent deux fois plus d'échappatoires face aux serpents.</p>
+    <p>Aux niveaux 11 et 15 (34 x 25 cases, 0,2 s par case), un quart et un cinquième des tirages demandaient plus de 78 et 84 s de trajet pur, sans compter les globules qui fuient, les serpents à éviter ni les murs qui s'effacent pendant les 20 dernières secondes : ils sont écartés. Au zoom 40, avec 5 oeufs de serpents sur 13 x 10 cases, près de la moitié des tirages mettaient un serpent à portée du départ. Le générateur du portage ne laisse jamais de poche fermée (0 sur 20 000), mais la vérification reste en place pour tout autre générateur. En moyenne, il faut 1,1 à 1,9 tirage par niveau, quelques millisecondes.</p>
 
-    <h3>3. Des serpents qui ne fusionnent plus</h3>
-    <p><code>updateSnakes()</code> combine maintenant trois forces : la direction du vaisseau ; un décalage de flanc propre à chaque serpent (-1, +1, -0,5, +0,5, 0) qui s'efface quand il s'approche, pour qu'ils arrivent de plusieurs côtés ; une répulsion entre serpents à moins de 1,6 case (affaiblie près du vaisseau pour qu'ils mordent toujours). La direction tourne d'au plus 0,3 radian par pas, sans limite à moins de 1,2 case, ce qui évite qu'un serpent tourne en rond autour de sa cible. Ils volent toujours par-dessus les murs, comme dans l'original. Mesure sur un pilote automatique invincible poursuivi pendant 60 s, tous les oeufs de serpents ouverts :</p>
+    <h3>3. Une aide aux virages (réglable)</h3>
+    <p><code>chooseShip()</code> garde la règle d'origine (pile des flèches tenues) et ajoute deux choses, désactivables dans les réglages : une flèche tapée est retenue jusqu'au centre de case suivant (au plus <code>max(6, n + 2)</code> pas), et quand la direction demandée est encore fermée, un vaisseau en mouvement continue tout droit au lieu de s'arrêter face au mur, puis tourne au premier centre où elle s'ouvre. Mesure sur 200 couloirs tirés au hasard, avec un virage possible deux cases plus loin :</p>
     <table>
-      <thead><tr><th>Niveau</th><th>Pas avec 2 serpents à moins de 0,5 case (loin du vaisseau) : original</th><th>Nouvelle version</th><th>Dispersion des directions d'arrivée (0 = un seul côté) : original</th><th>Nouvelle version</th></tr></thead>
+      <thead><tr><th>Geste</th><th>Règle d'origine</th><th>Avec l'aide</th></tr></thead>
       <tbody>
-        <tr><td>6</td><td>27,2 %</td><td>0,1 %</td><td>0,02</td><td>0,10</td></tr>
-        <tr><td>10</td><td>16,2 %</td><td>0,4 %</td><td>0,03</td><td>0,24</td></tr>
-        <tr><td>15</td><td>12,6 %</td><td>4,0 %</td><td>0,03</td><td>0,31</td></tr>
+        <tr><td>Flèche du virage maintenue deux cases trop tôt (l'autre relâchée)</td><td>0 / 200 (le vaisseau s'arrête)</td><td>200 / 200</td></tr>
+        <tr><td>Flèche du virage tapée un seul pas, 2 pas avant le carrefour</td><td>0 / 200 (pression perdue)</td><td>200 / 200</td></tr>
       </tbody>
     </table>
-    <p>La distance moyenne au serpent le plus proche passe de 0,4 à 0,6 case à 1,1 à 1,4 case. Le danger reste du même ordre : un pilote automatique qui ne tire pas et n'esquive pas est mordu après 11,7 s en moyenne au niveau 2 (12,6 s avant), 16,4 s au niveau 5 (17,9 s) et 14,7 s au niveau 8 (18,7 s) ; les serpents qui arrivent de plusieurs côtés sont un peu plus dangereux, mais aussi plus faciles à voir venir un par un et à abattre.</p>
+    <p>La vitesse ne change pas : le vaisseau avance toujours case par case à 4 pixels par pas, et <kbd>W</kbd> (ou <kbd>Maj</kbd>) le fait toujours pivoter sur place.</p>
 
-    <h3>4. Un temps calculé sur le vrai trajet</h3>
-    <p>À la création d'un niveau, <code>planRoute()</code> calcule une tournée vaisseau, tous les globules et oeufs, puis sortie (plus proche voisin puis 2-opt sur les distances du parcours en largeur). Mais les globules bougent : sur un même labyrinthe, deux parties d'un pilote automatique ne sont corrélées qu'à 0,40 à 0,54. La nouvelle version fait donc jouer ce pilote automatique trois fois sur le niveau lui-même (sans serpents, globules empêchés de sortir ; quelques dizaines de millisecondes à la création du niveau) et fixe <code>temps = (10 + temps du pilote * marge) * facteur de difficulté</code>, avec au moins la tournée planifiée et au moins 45 s. La marge vaut 3 au niveau 1 et baisse de 0,12 par niveau jusqu'à 1,6, puis jusqu'à 1,45 après le niveau 15. Comparaison avec une partie indépendante du pilote automatique sur les mêmes labyrinthes (150 par niveau) :</p>
-    <table>
-      <thead><tr><th>Niveau</th><th>Pilote (moy.)</th><th>Temps original</th><th>Rapport temps / pilote, original (p5 / médiane / p95)</th><th>Nouveau temps (moy.)</th><th>Rapport, nouvelle version</th></tr></thead>
-      <tbody>
-        <tr><td>1</td><td>17 s</td><td>57 s</td><td>2,33 / 3,35 / 5,56</td><td>61 s</td><td>2,67 / 3,63 / 5,03</td></tr>
-        <tr><td>3</td><td>26 s</td><td>64 s</td><td>1,77 / 2,49 / 3,61</td><td>82 s</td><td>2,27 / 3,18 / 4,14</td></tr>
-        <tr><td>5</td><td>50 s</td><td>107 s</td><td>1,63 / 2,19 / 2,85</td><td>135 s</td><td>2,13 / 2,73 / 3,45</td></tr>
-        <tr><td>8</td><td>74 s</td><td>145 s</td><td>1,47 / 1,99 / 2,62</td><td>168 s</td><td>1,79 / 2,29 / 2,93</td></tr>
-        <tr><td>12</td><td>84 s</td><td>145 s</td><td>1,35 / 1,73 / 2,25</td><td>153 s</td><td>1,46 / 1,84 / 2,35</td></tr>
-        <tr><td>15</td><td>85 s</td><td>145 s</td><td>1,32 / 1,74 / 2,26</td><td>142 s</td><td>1,33 / 1,68 / 2,13</td></tr>
-        <tr><td>25</td><td>105 s</td><td>145 s</td><td>1,08 / 1,38 / 1,91</td><td>161 s</td><td>1,22 / 1,55 / 1,98</td></tr>
-      </tbody>
-    </table>
-    <p>L'écart entre les niveaux les plus serrés et les plus larges (p95 / p5) baisse de 2,39 à 1,88 au niveau 1, de 2,04 à 1,83 au niveau 3 et de 1,77 à 1,62 au niveau 25 ; le temps est corrélé à 0,4 à 0,6 avec la durée réelle d'une partie, ce qui est le plafond imposé par l'errance des globules (la tournée planifiée seule ne fait qu'un peu mieux que la formule fixe). Surtout, la marge suit maintenant une pente voulue au lieu de chuter brutalement aux niveaux 3 et 5, et les niveaux du début sont plus généreux pour un joueur humain, plus lent que le pilote.</p>
-
-    <h3>5. Une difficulté qui continue après le niveau 15</h3>
-    <p>Au-delà du niveau 15, tous les trois niveaux apportent un globule et un serpent de plus (jusqu'à 18 et 14), les vitesses continuent de monter lentement (serpents plafonnés à 0,205 case par pas, toujours moins que le vaisseau à 0,25) et, surtout, les globules apprennent à fuir : à un carrefour, avec une probabilité de 6 % par niveau au-delà du 15 (plafond 60 %), un globule à moins de 8 cases du vaisseau prend la direction qui l'éloigne le plus (parcours en largeur depuis le vaisseau, recalculé seulement quand le vaisseau change de case). Pour le pilote automatique, le niveau 25 dure 103 s au lieu de 83 s avec la courbe d'origine. L'aide dit désormais la vérité : le labyrinthe grandit aux niveaux 3, 5 et 8.</p>
+    <h3>4. Des difficultés facultatives</h3>
+    <p>« Original » est la difficulté par défaut et suit la table à la lettre. « Facile » donne 5 vies et 25 % de temps en plus ; « Difficile » retire 15 % du temps. Rien d'autre ne change (mêmes labyrinthes, mêmes créatures, mêmes balles), et les records sont tenus séparément pour chaque difficulté.</p>
 
     <h3>Et pour le joueur</h3>
     <ul>
-      <li><b>Virages mémorisés</b> : une direction demandée trop tôt (mur sur le côté) ne fait plus pivoter le vaisseau face au mur ; il continue tout droit et tourne au premier carrefour ouvert. Une pression brève est retenue 300 ms. Sur 200 couloirs tirés au hasard, une flèche maintenue deux cases trop tôt donne le virage voulu 0 fois sur 200 dans l'original, 200 fois sur 200 maintenant ; une pression d'un seul pas juste avant le carrefour, 0 contre 200.</li>
-      <li>Compte à rebours, pause (bouton, <kbd>P</kbd>, <kbd>Échap</kbd>, automatique quand on change d'onglet), indicateur de sortie (chevrons verts quand elle est ouverte, rouges quand un globule s'en approche), alerte « barrière » au bon moment, points qui s'affichent sur place, éclair et secousse à la mort (désactivés si l'on préfère moins d'animations).</li>
-      <li>Panneau latéral (niveau, vies, globules, balles, temps avec jauge, score, état de la barrière et de la sortie, graine), le panneau d'origine restant dessiné sur le plateau ; records personnels par difficulté et record du défi du jour.</li>
-      <li>Sur téléphone, le labyrinthe passe en portrait (mêmes nombres de cases, colonnes et lignes échangées) et une croix directionnelle se pilote en faisant glisser le doigt ; on peut aussi glisser sur le labyrinthe et le toucher pour tirer.</li>
+      <li>Compte à rebours avant chaque niveau (désactivable), pause à tout moment (bouton, <kbd>P</kbd>, <kbd>Échap</kbd>, automatique quand on change d'onglet), messages de fin de niveau qui annoncent le niveau suivant (taille, créatures, temps, balles).</li>
+      <li>Indicateur de sortie : chevrons verts sur la porte quand il ne reste aucun globule, rouges quand un globule arrive à 3 cases de la sortie alors que la barrière est encore disponible (avec une alerte « Barrière ! »). Points qui s'affichent sur place, éclair et secousse à la mort (désactivables).</li>
+      <li>Panneau latéral (niveau, vies, globules, balles, temps avec jauge, score, état de la barrière et de la sortie, graine), le panneau d'origine restant dessiné à côté du labyrinthe ; records personnels par difficulté et record du défi du jour ; fenêtre « BRAVO » avec « bip-bip » prérempli.</li>
+      <li>Sur téléphone, tout le plateau est tourné d'un quart de tour (départ en haut, sortie en bas) : mêmes labyrinthes, mêmes règles, et les flèches, la croix tactile et les glissés du doigt sont tournés en conséquence. On peut changer d'orientation en pleine partie.</li>
     </ul>
 
     <div class="nav"><a href="nouveau/">▶ Jouer à la nouvelle version</a><a href="./">Version d'origine</a><a href="../index.html">◀ Retour à l'accueil</a></div>

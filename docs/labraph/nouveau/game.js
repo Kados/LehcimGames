@@ -1,7 +1,12 @@
 /*
  * LabRaph (nouvelle version) - page, drawing and controls.
- * The game logic lives in engine.js (LabEngine). The original sprites and sounds
- * come from ../assets/. Logic runs on the original fixed 50 ms tick.
+ * The game logic (original rules) lives in engine.js (LabEngine). The original sprites
+ * and sounds come from ../assets/. Logic runs on the original fixed 50 ms tick.
+ *
+ * The engine always works in the landscape coordinates of the original (maze at the
+ * top left, stone column and exit on the right). In portrait the whole play area is
+ * drawn turned a quarter turn clockwise (exit at the bottom), and the arrows, the
+ * touch cross and the swipes are turned back before reaching the engine.
  */
 (function () {
   'use strict';
@@ -9,23 +14,25 @@
   var E = window.LabEngine;
   var U = E.U, R = E.R, D = E.D, L = E.L, DX = E.DX, DY = E.DY, TICK = E.TICK;
   var KEY = [184, 10, 70];             // colour key of both sheets
+  var MW = E.MAZE_W, MH = E.MAZE_H;    // 560 x 400
 
-  // One entry per tile size T (same tables as the original port).
+  // Sprite tables of each zoom (tile size T), as in the original port.
   var ZOOMS = {
-    40: { tileY: 0, growY: 216, s: 24, cols: 10, rot: 4, ship: 400, fx: [160, 354], bullet: [168, 339, 8], glob: 0, snake: 500 },
-    32: { tileY: 80, growY: 256, s: 20, cols: 8, rot: 4, ship: 640, fx: [240, 232], bullet: [247, 218, 6], glob: 240, snake: 740 },
-    20: { tileY: 144, growY: 288, s: 12, cols: 5, rot: 2, ship: 800, fx: [340, 152], bullet: [344, 144, 4], glob: 400, snake: 900 },
-    16: { tileY: 184, growY: 308, s: 8, cols: 4, rot: 2, ship: 860, fx: [360, 88], bullet: [362, 82, 4], glob: 460, snake: 960 }
+    40: { tileY: 0, growY: 216, ship: 400, fx: [160, 354], bullet: [168, 339, 8], glob: 0, snake: 500 },
+    32: { tileY: 80, growY: 256, ship: 640, fx: [240, 232], bullet: [247, 218, 6], glob: 240, snake: 740 },
+    20: { tileY: 144, growY: 288, ship: 800, fx: [340, 152], bullet: [344, 144, 4], glob: 400, snake: 900 },
+    16: { tileY: 184, growY: 308, ship: 860, fx: [360, 88], bullet: [362, 82, 4], glob: 460, snake: 960 }
   };
+  // Wall bits of a cell (1 top, 2 right, 4 bottom, 8 left) -> [col,row] in the tile rows.
   var TILE = {};
   [[5, 0, 0], [10, 1, 0], [3, 2, 0], [6, 3, 0], [12, 4, 0], [9, 5, 0], [8, 6, 0], [1, 7, 0], [2, 8, 0], [4, 9, 0],
    [0, 0, 1], [14, 1, 1], [7, 2, 1], [11, 3, 1], [13, 4, 1], [15, 5, 1]].forEach(function (t) { TILE[t[0]] = [t[1], t[2]]; });
-  var TURN_CW = [9, 12, 15, 6], TURN_CCW = [11, 4, 5, 8];
+  var T_CORNER = 6, T_BOTTOM = 7, T_STONE = 8, T_EXIT = 9;   // second tile row
   var ROW_EXPLODE = 16, ROW_WARP = 17, ROW_EGG = 16, ROW_DIE = 17, ROW_FACE = 18;
+  var TURN_ROW = [[-1, 4, 5, 6], [9, -1, 7, 8], [11, 12, -1, 10], [13, 14, 15, -1]];  // [to][from]
   var PANEL = [920, 0, 60, 400], BARRIER = [101, 517, 28, 80];
   var BOXES = [['level', 72, '#4040ff'], ['lives', 123, '#ff2020'], ['globs', 178, '#ffff40'],
                ['bullets', 232, '#ff2020'], ['time', 288, '#e8d8a0'], ['score', 342, '#4060ff']];
-  var DARK_TICKS = E.DARK_TIME * 1000 / TICK;
   var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   var $ = function (id) { return document.getElementById(id); };
@@ -35,13 +42,14 @@
   // ---------- Settings and records (localStorage, never required) ----------
 
   var SKEY = 'lehcim.labraph.nv';
-  var DEFAULTS = { preset: 'normal', startLevel: '1', orient: 'auto', seed: '', panel: true, countdown: true, exitMark: true, effects: true, darkSound: true, touch: false };
+  var DEFAULTS = { preset: 'normal', startLevel: '1', orient: 'auto', seed: '', panel: true, countdown: true, exitMark: true, effects: true, music: true, assist: true, touch: false };
   function loadStore(k, def) {
     try { var v = JSON.parse(localStorage.getItem(SKEY + '.' + k)); if (v && typeof v === 'object') return v; } catch (e) { /* ignore */ }
     return def;
   }
   function saveStore(k, v) { try { localStorage.setItem(SKEY + '.' + k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
   var settings = Object.assign({}, DEFAULTS, loadStore('settings', {}));
+  if (!E.PRESETS[settings.preset]) settings.preset = 'normal';
   var bests = loadStore('best', {});          // {preset: {score, level}}
   var daily = loadStore('daily', {});         // {date, score, level}
   var HS_DEFAULTS = [{ name: 'Pro', score: 60 }, { name: 'Expert', score: 48 }, { name: 'Amateur', score: 36 }, { name: 'Débutant', score: 24 }, { name: 'Gromové', score: 12 }];
@@ -49,14 +57,14 @@
 
   // ---------- State ----------
 
-  var game = null;     // {level, lives, score, bullets, seed, attempt, preset, daily}
+  var game = null;     // {level, lives, score, bullets, start, seed, attempt, preset, daily}
   var lv = null;       // current level (engine object)
   var demo = null;     // title screen demo level
   var mode = 'title';  // title | level | between | over
   var paused = false;
   var input = E.newInput();
   var LY = null;       // layout {portrait, panel, W, H, mw, mh}
-  var popups = [], flash = 0, frameCount = 0, lastT = 0, darkAudio = null;
+  var popups = [], flash = 0, frameCount = 0, lastT = 0, music = null;
 
   // ---------- Layout ----------
 
@@ -67,20 +75,14 @@
   }
   function applyLayout(portrait) {
     var panel = !portrait && settings.panel;
-    LY = { portrait: portrait, panel: panel, mw: portrait ? 400 : 560, mh: portrait ? 560 : 400 };
+    if (LY && LY.portrait !== portrait) { input.held = []; input.buffer = -1; }
+    LY = { portrait: portrait, panel: panel, mw: portrait ? MH : MW, mh: portrait ? MW : MH };
     LY.W = LY.mw + (panel ? 60 : 0); LY.H = LY.mh;
     if (canvas.width !== LY.W || canvas.height !== LY.H) { canvas.width = LY.W; canvas.height = LY.H; }
     g.imageSmoothingEnabled = false;
     document.body.classList.toggle('mini', !panel);
     $('pad').classList.toggle('force', !!settings.touch);
-    if (lv) placeLevel(lv);
-    if (demo) placeLevel(demo);
     fit();
-  }
-  function placeLevel(l) {
-    l.ox = Math.floor((LY.mw - l.maze.cols * l.T) / 2);
-    l.oy = Math.floor((LY.mh - l.maze.rows * l.T) / 2);
-    l.z = ZOOMS[l.T];
   }
   // Scales the canvas to the room left by the top bar, the compact HUD and the touch pad.
   function fit() {
@@ -100,72 +102,81 @@
     canvas.classList.toggle('smooth', s < 1);   // pixelated downscaling would drop wall lines
   }
   window.addEventListener('resize', function () {
-    if (mode === 'title' && settings.orient === 'auto' && wantPortrait() !== LY.portrait) { applyLayout(wantPortrait()); newDemo(); }
+    if (settings.orient === 'auto' && wantPortrait() !== LY.portrait) applyLayout(wantPortrait());
     else fit();
   });
+  // Screen direction (arrow, cross, swipe) -> direction in the engine.
+  function toEngineDir(d) { return LY.portrait ? (d + 3) % 4 : d; }
+  // Engine pixel position -> canvas position.
+  function toScreen(x, y) { return LY.portrait ? { x: MH - y, y: x } : { x: x, y: y }; }
+  function viewTransform() { if (LY.portrait) g.setTransform(0, 1, -1, 0, MH, 0); else g.setTransform(1, 0, 0, 1, 0, 0); }
 
   // ---------- Game flow ----------
 
   function levelCfg(forDemo) {
-    var c = { preset: game && !forDemo ? game.preset : 'normal', portrait: LY.portrait, countdown: forDemo ? false : settings.countdown };
-    if (forDemo) c.god = true;
-    return c;
+    if (forDemo) return { preset: 'normal', countdown: false, god: true };
+    return { preset: game.preset, countdown: settings.countdown };
   }
 
   function newGame(isDaily) {
-    stopDark(); closeOverlay();
+    stopMusic(); closeOverlay();
     var today = E.dailySeed();
     var preset = isDaily ? 'normal' : settings.preset;
     var start = isDaily ? 1 : parseInt(settings.startLevel, 10) || 1;
     var seed = isDaily ? 'J' + today : (settings.seed.trim() || E.randomSeedCode());
     applyLayout(wantPortrait());
-    game = { level: start, lives: E.PRESETS[preset].lives, score: 0, bullets: Math.min(E.MAX_BULLETS, start - 1), seed: seed, attempt: 0, preset: preset, daily: isDaily ? today : null, startLevel: start };
+    game = { level: start, lives: E.PRESETS[preset].lives, score: 0, bullets: 0, start: null, seed: seed, attempt: 0, preset: preset, daily: isDaily ? today : null, startLevel: start };
     demo = null; paused = false;
     $('chipPreset').textContent = isDaily ? 'Défi du jour' : E.PRESETS[preset].label;
     renderRecords();
-    startLevel();
+    startLevel(true);
     if (isDaily) toast('Défi du jour ' + today + ' : les mêmes labyrinthes pour tout le monde.');
   }
 
-  function startLevel() {
+  // isNew: false when the level is played again after a life lost.
+  function startLevel(isNew) {
     closeOverlay();
     var prevT = lv ? lv.T : null;
-    lv = E.createLevel(game, levelCfg(false));
-    placeLevel(lv);
-    input.buffer = -1;
+    lv = E.createLevel(game, levelCfg(false), isNew !== false);
+    input.buffer = -1; input.assist = !!settings.assist;
     popups = []; mode = 'level';
-    setStatus('Niveau ' + game.level, 'Temps alloué : ' + lv.time + ' s. Détruis tous les globules jaunes.');
+    setStatus('Niveau ' + game.level, levelLine(lv.p) + '. Détruis tous les globules jaunes.');
     updateSeedLine();
-    if (prevT && prevT !== lv.T) toast('Le labyrinthe s\'agrandit !');
+    if (prevT && prevT !== lv.T) toast('Labyrinthe de ' + lv.p.cols + ' x ' + lv.p.rows + ' cases');
+  }
+  function levelLine(p) {
+    return p.globs + (p.globs > 1 ? ' globules, ' : ' globule, ') + p.snakes + (p.snakes > 1 ? ' serpents, ' : ' serpent, ') + p.time + ' s';
   }
 
-  function afterLifeLost(reason, text) {
-    game.lives--; game.attempt++;
-    if (game.lives <= 0) { gameOver(text); return; }
+  var LOST = {
+    time: ['Temps écoulé', 'Pendant les 20 dernières secondes, les murs s\'effacent : repère ton chemin avant.'],
+    snake: ['Tu es mort !', 'Les serpents suivent les couloirs et, à chaque carrefour, prennent la direction qui les rapproche de toi à vol d\'oiseau : un mur peut les égarer. Un oeuf qui s\'ouvre de loin cache un serpent.'],
+    escape: ['Un globule s\'est sauvé', 'Un globule qui longe le mur finit par trouver la sortie : pense à la barrière (Entrée) quand il s\'en approche.']
+  };
+  function afterLifeLost(why) {
+    var t = LOST[why] || LOST.snake;
+    if (game.lives <= 0) { gameOver(t[0]); return; }
+    game.attempt++;
     mode = 'between';
-    var help = reason === 'escape' ? 'Pense à la barrière (Entrée) quand un globule approche de la sortie.'
-      : reason === 'time' ? 'Le temps est calculé sur le vrai trajet : va droit aux globules, sans détour.'
-      : 'Les serpents volent par-dessus les murs : garde tes distances ou tire-leur dessus.';
     showOverlay({
-      cls: 'bad', title: text,
-      lines: ['Il te reste ' + game.lives + (game.lives > 1 ? ' vies.' : ' vie.') + ' Le niveau recommence dans un nouveau labyrinthe.', help],
-      buttons: [['Continuer', startLevel, true]]
+      cls: 'bad', title: t[0],
+      lines: ['Il te reste ' + game.lives + (game.lives > 1 ? ' vies.' : ' vie.') + ' Le niveau recommence dans un nouveau labyrinthe, avec ' + game.start + (game.start > 1 ? ' balles.' : ' balle.'), t[1]],
+      buttons: [['Continuer', function () { startLevel(false); }, true]]
     });
-    setStatus(text, 'Vies restantes : ' + game.lives, 'bad');
+    setStatus(t[0], 'Vies restantes : ' + game.lives, 'bad');
   }
 
   function levelDone() {
     mode = 'between';
-    var n = game.level, left = Math.max(0, Math.ceil(lv.timeLeft * TICK / 1000));
-    var grows = E.tileSize(n + 1) !== E.tileSize(n);
-    var lines = ['Score : ' + game.score + ' · temps restant : ' + left + ' s'];
-    if (grows) lines.push('Au prochain niveau, le labyrinthe s\'agrandit.');
-    if (n + 1 === 16) lines.push('Au-delà du niveau 15, les globules apprennent à fuir ton vaisseau !');
-    showOverlay({ cls: 'good', title: 'Bravo ! Niveau ' + n + ' réussi', lines: lines, buttons: [['Niveau suivant', nextLevel, true]] });
-    setStatus('Niveau ' + n + ' réussi !', 'Score : ' + game.score, 'good');
+    var n = game.level, p = E.levelParams(n + 1, { preset: game.preset });
+    var next = Math.min(E.MAX_BULLETS, game.bullets + p.bonus);
+    var lines = ['Score : ' + game.score + ' · balles gardées : ' + game.bullets,
+      'Niveau ' + (n + 1) + ' : ' + p.cols + ' x ' + p.rows + ' cases, ' + levelLine(p) + ', ' + next + (next > 1 ? ' balles.' : ' balle.')];
+    showOverlay({ cls: 'good', title: 'Niveau ' + n + ' terminé', lines: lines, buttons: [['Niveau suivant', nextLevel, true]] });
+    setStatus('Niveau ' + n + ' terminé !', 'Score : ' + game.score, 'good');
     updateBest();
   }
-  function nextLevel() { game.level++; game.attempt = 0; startLevel(); }
+  function nextLevel() { game.level++; game.attempt = 0; startLevel(true); }
 
   function updateBest() {
     if (!game) return null;
@@ -184,7 +195,7 @@
   }
 
   function gameOver(text) {
-    stopDark();
+    stopMusic();
     mode = 'over';
     var sc = game.score, prevBest = game.daily ? (daily.date === game.daily ? daily.score : -1) : (bests[game.preset] ? bests[game.preset].score : -1);
     updateBest();
@@ -192,12 +203,15 @@
     setStatus('La partie est terminée.', 'Score : ' + sc, 'bad');
     var hs = table(game.preset), p;
     if (!game.daily && hs.qualifies(sc)) {
-      p = Lehcim.prompt((text ? text + '\n' : '') + 'Tu fais partie des meilleurs ! Ecris ton nom .\n( 14 caractères maximum )', 14)
-        .then(function (name) { hs.add(name.slice(0, 14) || 'bip-bip', sc); lastName = name.slice(0, 14) || 'bip-bip'; });
+      // "BRAVO !" window of the original: the name field starts with "bip-bip".
+      p = Lehcim.prompt('BRAVO ! Tu fais partie des meilleurs ! Ecris ton nom .\n( 14 caractères maximum )', 14)
+        .then(function (name) { lastName = name.slice(0, 14) || 'bip-bip'; hs.add(lastName, sc); });
+      var inp = document.querySelector('dialog.msg[open] input');
+      if (inp) { inp.value = 'bip-bip'; inp.select(); }
     } else p = Promise.resolve();
     p.then(function () {
       renderRecords();
-      var lines = [(text ? text + ' ' : '') + 'Score : ' + sc + ' · niveau atteint : ' + game.level];
+      var lines = [(text ? text + '. ' : '') + 'Score : ' + sc + ' · niveau atteint : ' + game.level];
       if (newRecord) lines.push(game.daily ? 'Nouveau record du défi du jour !' : 'Nouveau record personnel !');
       showOverlay({
         cls: 'bad', title: 'La partie est terminée',
@@ -219,7 +233,7 @@
   }
 
   function toTitle() {
-    stopDark(); closeOverlay();
+    stopMusic(); closeOverlay();
     game = null; lv = null; mode = 'title'; paused = false;
     applyLayout(wantPortrait());
     newDemo();
@@ -227,10 +241,9 @@
   }
 
   function newDemo() {
-    var dg = { level: 3, lives: 1, score: 0, bullets: 0, seed: 'demo' + Math.floor(Math.random() * 1e6), attempt: 0 };
-    demo = E.createLevel(dg, levelCfg(true));
-    demo.timeLeft = 1e9;
-    placeLevel(demo);
+    var dg = { level: 1, lives: 1, score: 0, bullets: 0, start: null, seed: 'demo' + Math.floor(Math.random() * 1e6), attempt: 0 };
+    demo = E.createLevel(dg, levelCfg(true), true);
+    demo.limit = 1e6;
   }
 
   function togglePause(force) {
@@ -239,11 +252,11 @@
     if (p === paused) return;
     paused = p;
     if (paused) {
-      if (darkAudio) { try { darkAudio.pause(); } catch (e) { /* ignore */ } }
+      if (music) { try { music.pause(); } catch (e) { /* ignore */ } }
       showOverlay({ title: 'Pause', lines: ['Niveau ' + game.level + ' · score ' + game.score], buttons: [['Reprendre', function () { togglePause(false); }, true], ['Abandonner', abandon]], hint: 'P ou Échap pour reprendre' });
     } else {
       closeOverlay();
-      if (darkAudio) { try { var pr = darkAudio.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (e) { /* ignore */ } }
+      if (music) { try { var pr = music.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (e) { /* ignore */ } }
     }
     updatePauseButtons();
   }
@@ -266,7 +279,6 @@
     if (o.big) { var b = document.createElement('div'); b.className = 'big'; b.textContent = o.big; overlay.appendChild(b); }
     if (o.title) { var h = document.createElement('h2'); h.textContent = o.title; overlay.appendChild(h); }
     (o.lines || []).forEach(function (t) { var p = document.createElement('p'); p.textContent = t; overlay.appendChild(p); });
-    if (o.html) { var d = document.createElement('div'); d.innerHTML = o.html; overlay.appendChild(d); }
     var row = document.createElement('div'); row.className = 'btns';
     var first = null;
     (o.buttons || []).forEach(function (bt) {
@@ -290,7 +302,7 @@
     var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     showOverlay({
       big: 'LabRaph',
-      lines: ['Détruis tous les globules jaunes (contact : 2 points, balle : 1 point), puis sors du labyrinthe avant la fin du temps. Gare aux serpents rouges, qui volent par-dessus les murs !',
+      lines: ['Détruis tous les globules jaunes (contact : 2 points, balle : 1 point), puis sors par la porte de la colonne de pierre avant la fin du temps. Gare aux serpents rouges !',
         touch ? 'Croix ou glissé du doigt : se déplacer · Tir · Barrière devant la sortie.' : 'Flèches : se déplacer · Espace : tirer · Entrée : barrière · W ou Maj : pivoter · P : pause.'],
       buttons: [['Jouer', function () { newGame(false); }, true], ['Défi du jour', function () { newGame(true); }], ['Règles', function () { $('help').showModal(); }]],
       hint: (E.PRESETS[settings.preset].label) + (rec ? ' · ton record : ' + rec.score + ' points (niveau ' + rec.level + ')' : '')
@@ -315,7 +327,7 @@
     el.innerHTML = '';
     el.appendChild(document.createTextNode('Graine '));
     var c = document.createElement('code'); c.textContent = game.seed; el.appendChild(c);
-    el.appendChild(document.createTextNode(' · niveau ' + game.level + (game.attempt ? ', essai ' + (game.attempt + 1) : '') + ' · temps alloué ' + lv.time + ' s'));
+    el.appendChild(document.createTextNode(' · niveau ' + game.level + (game.attempt ? ', essai ' + (game.attempt + 1) : '') + ' · ' + lv.p.cols + ' x ' + lv.p.rows + ' · ' + lv.limit + ' s'));
   }
 
   function renderRecords() {
@@ -339,27 +351,25 @@
   var hudCache = '';
   function hudValues() {
     if (!game || !lv) return null;
-    return {
-      level: game.level, lives: game.lives, globs: E.globsLeft(lv), bullets: game.bullets,
-      time: Math.max(0, Math.ceil(lv.timeLeft * TICK / 1000)), score: game.score
-    };
+    return { level: game.level, lives: game.lives, globs: E.globsLeft(lv), bullets: E.bulletsLeft(lv), time: E.timeLeft(lv), score: game.score };
   }
   function updateHud() {
     var v = hudValues();
-    var key = v ? [v.level, v.lives, v.globs, v.bullets, v.time, v.score, lv.barrierUsed, lv.barrier > 0, lv.nearExit, paused].join() : '-';
+    var key = v ? [v.level, v.lives, v.globs, v.bullets, v.time, v.score, lv.barrier.state, lv.nearExit, paused].join() : '-';
     if (key === hudCache) return;
     hudCache = key;
     document.querySelectorAll('[data-v]').forEach(function (el) { el.textContent = v ? v[el.getAttribute('data-v')] : '-'; });
     var warn = v && v.time <= E.DARK_TIME && lv.state === 'play';
     document.querySelectorAll('[data-w="time"]').forEach(function (el) { el.classList.toggle('warn', !!warn); });
     var bar = $('timebar');
-    bar.firstElementChild.style.width = v ? Math.max(0, 100 * lv.timeLeft / lv.timeTotal) + '%' : '100%';
+    bar.firstElementChild.style.width = v ? Math.max(0, 100 * v.time / lv.limit) + '%' : '100%';
     bar.classList.toggle('dark', !!warn);
     var cb = $('chipBarrier'), ce = $('chipExit');
     if (!v) { cb.className = 'chip'; cb.textContent = 'Barrière prête'; ce.className = 'chip'; ce.textContent = 'Sortie fermée'; return; }
-    cb.className = 'chip' + (lv.barrier > 0 ? ' on' : lv.barrierUsed ? ' off' : lv.nearExit ? ' alert' : '');
-    cb.textContent = lv.barrier > 0 ? 'Barrière active' : lv.barrierUsed ? 'Barrière utilisée' : lv.nearExit ? 'Barrière ! (Entrée)' : 'Barrière prête';
-    var open = v.globs === 0;
+    var bs = lv.barrier.state;
+    cb.className = 'chip' + (bs === 1 ? ' on' : bs === 2 ? ' off' : lv.nearExit ? ' alert' : '');
+    cb.textContent = bs === 1 ? 'Barrière active' : bs === 2 ? 'Barrière utilisée' : lv.nearExit ? 'Barrière ! (Entrée)' : 'Barrière prête';
+    var open = v.globs === 0 && (lv.state === 'play' || lv.end === 'win');
     ce.className = 'chip' + (open ? ' on' : '');
     ce.textContent = open ? 'Sortie ouverte' : 'Sortie fermée';
   }
@@ -375,48 +385,52 @@
         case 'points': popups.push({ x: e.x, y: e.y, text: '+' + e.points, k: 0, color: e.points === 2 ? '#ffe14d' : '#ffffff' }); break;
         case 'snakeKilled': popups.push({ x: e.x, y: e.y, text: 'Touché !', k: 0, color: '#ff8080' }); break;
         case 'allGlobs':
-          setStatus('Tous les globules sont détruits !', 'Sors du labyrinthe par l\'ouverture du mur extérieur.', 'good');
-          toast('Sortie ouverte : sors du labyrinthe !');
+          setStatus('Plus aucun globule !', 'Sors par la porte de la colonne de pierre.', 'good');
+          toast('Sortie ouverte : rejoins la porte !');
           break;
-        case 'nearExit': if (!l.barrierUsed) toast('Un globule approche de la sortie ! Entrée = barrière'); break;
-        case 'dark': startDark(); toast('Le labyrinthe devient invisible !'); break;
-        case 'go': setStatus('Niveau ' + game.level + ' : détruis tous les globules !', 'Temps alloué : ' + l.time + ' s'); break;
-        case 'dying':
-          stopDark();
-          if (settings.effects) {
-            flash = 1;
-            if (!REDUCED) { canvas.classList.remove('shake'); void canvas.offsetWidth; canvas.classList.add('shake'); }
-          }
-          setStatus(e.text, '', 'bad');
+        case 'nearExit': if (l.barrier.state === 0) toast('Un globule approche de la sortie ! Entrée = barrière'); break;
+        case 'dark': setStatus('20 dernières secondes', 'Les murs s\'effacent peu à peu.', 'bad'); break;
+        case 'go': startMusic(l); setStatus('Niveau ' + game.level + ' : détruis tous les globules !', levelLine(l.p)); break;
+        case 'ending':
+          stopMusic();
+          if (e.why !== 'win') {
+            if (settings.effects) {
+              flash = 1;
+              if (!REDUCED) { canvas.classList.remove('shake'); void canvas.offsetWidth; canvas.classList.add('shake'); }
+            }
+            setStatus((LOST[e.why] || LOST.snake)[0], '', 'bad');
+          } else setStatus('Niveau terminé !', '', 'good');
           break;
-        case 'lost': afterLifeLost(e.reason, e.text); break;
-        case 'won': stopDark(); levelDone(); break;
+        case 'lost': afterLifeLost(e.why); break;
+        case 'won': levelDone(); break;
       }
     });
   }
 
   // ---------- Sound ----------
 
+  // Original WAVE resources and their use in the program.
   var SND = {
-    shot: '../assets/sounds/1.wav', escape: '../assets/sounds/2.wav', boom: '../assets/sounds/3.wav',
-    barrier: '../assets/sounds/4.wav', eat: '../assets/sounds/5.wav', globShot: '../assets/sounds/6.wav',
-    exit: '../assets/sounds/7.wav', snakeDie: '../assets/sounds/8.wav', egg: '../assets/sounds/9.wav'
+    barrier: '../assets/sounds/1.wav', ricochet1: '../assets/sounds/2.wav', ricochet2: '../assets/sounds/3.wav',
+    snakeShot: '../assets/sounds/4.wav', death: '../assets/sounds/5.wav', glob: '../assets/sounds/6.wav',
+    dark: '../assets/sounds/7.wav', shot: '../assets/sounds/8.wav', exit: '../assets/sounds/9.wav'
   };
   var soundsAsked = false;
   function askSounds() { if (!soundsAsked) { soundsAsked = true; Lehcim.loadSounds(SND); } }
   ['pointerdown', 'keydown'].forEach(function (ev) { window.addEventListener(ev, askSounds, { once: true, capture: true }); });
-  // The two long sounds accompany the last 20 seconds, when the maze is invisible.
-  function startDark() {
-    stopDark();
-    if (Lehcim.isMuted() || !settings.darkSound) return;
+  // Music of a level: one of the two long sounds (10 or 11), looped until the level ends.
+  function startMusic(l) {
+    stopMusic();
+    if (Lehcim.isMuted() || !settings.music) return;
     try {
-      var a = new Audio('../assets/sounds/' + (game.level % 2 ? 10 : 11) + '.wav');
-      a.volume = 0.6; darkAudio = a;
+      var which = l.seed != null ? 10 + (l.seed & 1) : (Math.random() < 0.5 ? 10 : 11);
+      var a = new Audio('../assets/sounds/' + which + '.wav');
+      a.loop = true; a.volume = 0.5; music = a;
       var pr = a.play(); if (pr && pr.catch) pr.catch(function () { /* autoplay refused */ });
     } catch (e) { /* ignore */ }
   }
-  function stopDark() {
-    if (darkAudio) { try { darkAudio.pause(); } catch (e) { /* ignore */ } darkAudio = null; }
+  function stopMusic() {
+    if (music) { try { music.pause(); } catch (e) { /* ignore */ } music = null; }
   }
 
   // ---------- Input ----------
@@ -424,20 +438,26 @@
   var KEYDIR = { ArrowUp: U, ArrowRight: R, ArrowDown: D, ArrowLeft: L };
   function dialogOpen() { return !!document.querySelector('dialog[open]'); }
   function playing() { return game && lv && mode === 'level' && !paused; }
-  function press(d) { E.inputPress(lv, input, d); }
-  function release(d) { E.inputRelease(input, d); }
-  function doFire() { if (playing()) E.fire(lv); }
+  // d: direction on the screen.
+  function press(d) { E.inputPress(lv, input, toEngineDir(d)); }
+  function release(d) { E.inputRelease(input, toEngineDir(d)); }
+  function doFire() {
+    if (!playing() || lv.state !== 'play') return;
+    if (!E.fire(lv)) toast('Plus de balles !', 1200);
+  }
   function doBarrier() {
     if (!playing()) return;
-    if (lv.barrierUsed && lv.state === 'play') toast('La barrière a déjà servi dans ce niveau.');
-    else if (E.putBarrier(lv)) toast('Barrière : la sortie est bloquée 3 secondes.', 1600);
+    var r = E.putBarrier(lv);
+    if (r === true) toast('Barrière : la sortie est fermée aux créatures pendant 3 secondes.', 1600);
+    else if (r === 'used') toast('La barrière a déjà servi dans ce niveau.');
+    else if (r === 'glob') toast('Trop tard : un globule est déjà dans la sortie.');
   }
   function isPivotKey(e) { return e.key === 'w' || e.key === 'W' || e.code === 'KeyW' || e.key === 'Shift'; }
 
   window.addEventListener('keydown', function (e) {
     if (dialogOpen()) return;
     var k = e.key, onButton = document.activeElement && document.activeElement.tagName === 'BUTTON';
-    if (k in KEYDIR) { e.preventDefault(); press(KEYDIR[k]); return; }
+    if (k in KEYDIR) { e.preventDefault(); if (!e.repeat) press(KEYDIR[k]); return; }
     if (isPivotKey(e)) { input.pivot = true; if (k !== 'Shift') e.preventDefault(); return; }
     if (k === 'p' || k === 'P' || k === 'Escape') { e.preventDefault(); togglePause(); return; }
     if (k === ' ' || k === 'Spacebar' || k === 'Enter') {
@@ -517,11 +537,50 @@
 
   // ---------- Drawing ----------
 
+  // Maze, stone column (and stone row at zoom 32) and exit, drawn once per level on
+  // an off-screen canvas in the original coordinates; the erased spots are added to it.
+  function background(l) {
+    var z = ZOOMS[l.T], T = l.T, m = l.maze, x, y;
+    if (!l.bg) {
+      l.bg = document.createElement('canvas'); l.bg.width = MW; l.bg.height = MH; l.bgDone = 0;
+      var b = l.bg.getContext('2d');
+      b.fillStyle = '#000'; b.fillRect(0, 0, MW, MH);
+      var tile = function (col, row, dx, dy, h) { b.drawImage(maze, col * T, z.tileY + row * T, T, h || T, dx, dy, T, h || T); };
+      for (y = 0; y < m.rows; y++) {
+        for (x = 0; x < m.cols; x++) { var t = TILE[m.walls[y * m.cols + x]]; tile(t[0], t[1], x * T, y * T); }
+        tile(y === m.exit.y ? T_EXIT : T_STONE, 1, m.cols * T, y * T);
+      }
+      var rest = MH - m.rows * T;
+      if (rest > 0) {
+        for (x = 0; x < m.cols; x++) tile(T_BOTTOM, 1, x * T, m.rows * T, rest);
+        tile(T_CORNER, 1, m.cols * T, m.rows * T, rest);
+      }
+    }
+    if (l.bgDone < l.eraseLog.length) {
+      var bc = l.bg.getContext('2d');
+      for (; l.bgDone < l.eraseLog.length; l.bgDone++) {
+        var e = l.eraseLog[l.bgDone];
+        bc.drawImage(maze, e[2] * T, z.growY, T, T, e[0] * T + T / 2, e[1] * T + T / 2, T, T);
+      }
+    }
+    return l.bg;
+  }
+
   function draw() {
+    g.setTransform(1, 0, 0, 1, 0, 0);
     g.fillStyle = '#000'; g.fillRect(0, 0, canvas.width, canvas.height);
     if (!sheetsReady) return;
     var l = lv || demo;
-    if (l) drawLevel(l, !lv);
+    if (l) {
+      viewTransform();
+      drawLevel(l, !lv);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      drawPopups();
+      if (l.state === 'countdown') {
+        var n = 3 - Math.floor((l.stateTick - 1) / 12);
+        banner(n > 0 ? String(n) : 'Partez !', 'Niveau ' + l.game.level + ' · ' + levelLine(l.p));
+      }
+    }
     if (LY.panel) drawPanel();
     if (flash > 0) {
       g.fillStyle = 'rgba(255,40,40,' + (0.45 * flash).toFixed(3) + ')';
@@ -529,7 +588,7 @@
     }
   }
 
-  function banner(l, big, small) {
+  function banner(big, small) {
     g.save();
     var cy = LY.mh / 2;
     g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(0, cy - 40, LY.mw, small ? 80 : 60);
@@ -540,73 +599,69 @@
     g.restore();
   }
 
-  var cur = null;   // level being drawn
-  function cx2px(x) { return cur.ox + (x + 0.5) * cur.T; }
-  function cy2px(y) { return cur.oy + (y + 0.5) * cur.T; }
-  function spr(img, sx, sy, s, x, y) {
-    g.drawImage(img, sx, sy, s, s, Math.round(cx2px(x) - s / 2), Math.round(cy2px(y) - s / 2), s, s);
+  // Draws a square sprite of size s centred on a pixel position.
+  function spr(img, sx, sy, s, p) {
+    g.drawImage(img, sx, sy, s, s, Math.round(p.x - s / 2), Math.round(p.y - s / 2), s, s);
   }
+  function rowOf(o) { return o.turn ? TURN_ROW[o.turn.to][o.turn.from] : o.face; }
+  function frameOf(l, o) { return o.turn ? Math.min(l.n - 1, o.turn.k) : (o.k > 0 ? o.k - 1 : o.anim % l.n); }
+  function centre(l, c) { return c * l.T + l.T / 2; }
 
   function drawLevel(l, isDemo) {
-    cur = l;
-    var z = l.z, T = l.T, m = l.maze, s = z.s, x, y;
-    var dark = E.isDark(l);
-    var intro = l.state === 'intro';
-    for (y = 0; y < m.rows; y++) for (x = 0; x < m.cols; x++) {
-      var px = l.ox + x * T, py = l.oy + y * T;
-      if (intro && l.stateTick < 10) {
-        g.drawImage(maze, Math.min(4, l.stateTick >> 1) * T, z.growY, T, T, px, py, T, T);
-      } else {
-        var t = TILE[dark ? 0 : m.walls[y * m.cols + x]];
-        g.drawImage(maze, t[0] * T, z.tileY + t[1] * T, T, T, px, py, T, T);
-      }
-    }
-    if (intro) { banner(l, 'Niveau ' + l.game.level); return; }
+    var z = ZOOMS[l.T], s = l.s;
+    g.drawImage(background(l), 0, 0);
     if (settings.exitMark && !isDemo) drawExitMark(l);
-    if (l.barrier > 0) drawBarrier(l);
-    l.eggs.forEach(function (e) {
-      var col = e.open < 0 ? 0 : Math.min(z.cols - 2, e.open >> 1);
-      spr(creatures, (e.kind === 'glob' ? z.glob : z.snake) + col * s, ROW_EGG * s, s, e.x, e.y);
-    });
-    l.globs.forEach(function (o) {
-      var row = o.dir >= 0 ? o.dir : o.last;
-      spr(creatures, z.glob + ((o.anim >> 1) % z.cols) * s, row * s, s, o.x, o.y);
+    if (l.barrier.state === 1) drawBarrier(l);
+    l.creatures.forEach(function (c) {
+      var x0 = c.kind === 'glob' ? z.glob : z.snake, p = E.pos(l, c);
+      if (c.state === 1) spr(creatures, x0, ROW_EGG * s, s, p);
+      else if (c.state === 2) spr(creatures, x0 + c.t * s, ROW_EGG * s, s, p);
+      else if (c.state === 3) spr(creatures, x0 + frameOf(l, c) * s, rowOf(c) * s, s, p);
+      else if (c.state === 4) spr(creatures, x0 + c.t * s, ROW_FACE * s, s, p);
+      else if (c.state === 5) spr(creatures, x0 + c.t * s, ROW_DIE * s, s, p);
     });
     l.bullets.forEach(function (b) {
-      var bb = z.bullet;
-      g.drawImage(maze, bb[0], bb[1], bb[2], bb[2], Math.round(cx2px(b.x) - bb[2] / 2), Math.round(cy2px(b.y) - bb[2] / 2), bb[2], bb[2]);
+      var bb = z.bullet, p = E.bulletPos(l, b);
+      g.drawImage(maze, bb[0], bb[1], bb[2], bb[2], Math.round(p.x - bb[2] / 2), Math.round(p.y - bb[2] / 2), bb[2], bb[2]);
     });
-    if (!l.shipDead && l.state !== 'won') drawShip(l);
-    l.snakes.forEach(function (n) {
-      spr(creatures, z.snake + ((n.anim >> 1) % z.cols) * s, n.face * s, s, n.x, n.y);
+    drawShip(l);
+    l.fx.forEach(function (f) {
+      // Bullet hitting a wall: rows 1..4 of the effect block = up, right, down, left.
+      var off = (l.T - s) / 2, k = Math.min(l.n - 1, f.k);
+      g.drawImage(maze, z.fx[0] + k * s, z.fx[1] + (1 + f.dir) * s, s, s,
+        Math.round(centre(l, f.x) + DX[f.dir] * off - s / 2), Math.round(centre(l, f.y) + DY[f.dir] * off - s / 2), s, s);
     });
-    l.fx.forEach(function (f) { drawFx(l, f); });
-    drawPopups();
-    if (dark && (l.timeLeft >> 2) % 2 === 0 && l.timeLeft > DARK_TICKS - 40) {
-      g.save(); g.font = 'bold 16px "Times New Roman", serif'; g.fillStyle = '#ff4040'; g.textAlign = 'center';
-      g.fillText('Le labyrinthe devient invisible !', LY.mw / 2, 20); g.restore();
-    }
-    if (l.state === 'countdown') {
-      var n = 3 - Math.floor((l.stateTick - 1) / 12);
-      banner(l, n > 0 ? String(n) : 'Partez !', 'Niveau ' + l.game.level + ' · ' + l.time + ' s');
-    }
   }
 
-  // Exit marker: green chevrons once the exit is open, red pulse when a globule comes close.
+  function drawShip(l) {
+    var z = ZOOMS[l.T], s = l.s, sh = l.ship, p = E.pos(l, sh);
+    if (sh.state === 4) { if (sh.anim < l.n - 1) spr(maze, z.ship + sh.anim * s, ROW_EXPLODE * s, s, p); return; }
+    if (sh.state === 5) { if (sh.anim < l.n) spr(maze, z.ship + sh.anim * s, ROW_WARP * s, s, p); return; }
+    spr(maze, z.ship + frameOf(l, sh) * s, rowOf(sh) * s, s, p);
+  }
+
+  // The barrier slides down over the exit opening, then up again.
+  function drawBarrier(l) {
+    var T = l.T, e = l.maze.exit, w = Math.round(T * BARRIER[2] / BARRIER[3]);
+    var x = e.x * T - Math.round(w / 2), y = e.y * T - Math.round(l.barrier.slide * T / 6);
+    g.drawImage(maze, BARRIER[0], BARRIER[1], BARRIER[2], BARRIER[3], x, y, w, T);
+  }
+
+  // Exit marker (new): green chevrons on the exit once every globule is destroyed,
+  // red ones while a globule comes close to it and the barrier is still available.
   function drawExitMark(l) {
-    var e = l.maze.exit, T = l.T, open = E.globsLeft(l) === 0 && l.barrier <= 0;
-    if (!open && !l.nearExit) return;
+    if (l.state !== 'play') return;
+    var e = l.maze.exit, T = l.T, open = E.globsLeft(l) === 0;
+    if (!open && !(l.nearExit && l.barrier.state === 0)) return;
     var pulse = REDUCED ? 1 : 0.55 + 0.45 * Math.sin(frameCount / 6);
-    var px = cx2px(e.x) + DX[e.dir] * T * 0.18, py = cy2px(e.y) + DY[e.dir] * T * 0.18;
     g.save();
-    g.translate(Math.round(px), Math.round(py));
-    g.rotate((e.dir - U) * Math.PI / 2);         // chevron drawn pointing up = outwards
+    g.translate(Math.round(centre(l, e.x)), Math.round(centre(l, e.y)));
     g.globalAlpha = pulse;
     g.fillStyle = open ? '#3dff7a' : '#ff3030';
-    var w = Math.max(5, T * 0.28);
+    var w = Math.max(4, T * 0.22);
     for (var i = 0; i < 2; i++) {
-      var oy = -i * w * 0.7 + w * 0.6;
-      g.beginPath(); g.moveTo(-w, oy); g.lineTo(0, oy - w * 0.8); g.lineTo(w, oy); g.lineTo(w * 0.6, oy + w * 0.25); g.lineTo(0, oy - w * 0.35); g.lineTo(-w * 0.6, oy + w * 0.25); g.closePath(); g.fill();
+      var ox = (i - 0.5) * w * 0.9;
+      g.beginPath(); g.moveTo(ox - w * 0.4, -w); g.lineTo(ox + w * 0.5, 0); g.lineTo(ox - w * 0.4, w); g.lineTo(ox - w * 0.1, 0); g.closePath(); g.fill();
     }
     g.restore();
   }
@@ -615,61 +670,11 @@
     if (!popups.length) return;
     g.save(); g.textAlign = 'center'; g.font = 'bold 15px "Times New Roman", serif';
     popups.forEach(function (p) {
+      var q = toScreen(p.x, p.y);
       g.globalAlpha = Math.max(0, 1 - p.k / 24);
-      g.fillStyle = '#000'; g.fillText(p.text, cx2px(p.x) + 1, cy2px(p.y) - p.k + 1);
-      g.fillStyle = p.color; g.fillText(p.text, cx2px(p.x), cy2px(p.y) - p.k);
+      g.fillStyle = '#000'; g.fillText(p.text, q.x + 1, q.y - p.k + 1);
+      g.fillStyle = p.color; g.fillText(p.text, q.x, q.y - p.k);
     });
-    g.restore();
-  }
-
-  function drawShip(l) {
-    var z = l.z, s = z.s, sh = l.ship, pos = E.shipPos(l), sx, sy;
-    if (l.state === 'exiting') {
-      var k = Math.min(z.cols - 2, l.stateTick >> 1), d = l.maze.exit.dir;
-      var ex = l.maze.exit.x + DX[d] * (l.stateTick / 30), ey = l.maze.exit.y + DY[d] * (l.stateTick / 30);
-      g.save();
-      g.translate(Math.round(cx2px(ex)), Math.round(cy2px(ey)));
-      g.rotate((d - R) * Math.PI / 2);
-      g.drawImage(maze, z.ship + k * s, ROW_WARP * s, s, s, -s / 2, -s / 2, s, s);
-      g.restore();
-      return;
-    }
-    if (sh.turn) {
-      var cw = sh.turn.to === (sh.turn.from + 1) % 4;
-      sy = (cw ? TURN_CW : TURN_CCW)[sh.turn.from] * s;
-      sx = z.ship + Math.min(z.rot - 1, Math.floor(sh.turn.k * z.rot / 2)) * s;
-    } else {
-      sy = sh.face * s;
-      sx = z.ship + ((sh.anim >> 1) % z.cols) * s;
-    }
-    spr(maze, sx, sy, s, pos.x, pos.y);
-  }
-
-  function drawFx(l, f) {
-    var z = l.z, s = z.s, n = E.fxFrames(l, f), k = Math.min(n - 1, f.k >> 1);
-    switch (f.kind) {
-      case 'wall': {
-        var off = (l.T - s) / 2 / l.T;
-        g.drawImage(maze, z.fx[0] + k * s, z.fx[1] + (1 + f.dir) * s, s, s,
-          Math.round(cx2px(f.x + DX[f.dir] * off) - s / 2), Math.round(cy2px(f.y + DY[f.dir] * off) - s / 2), s, s);
-        break;
-      }
-      case 'globDie': spr(creatures, z.glob + k * s, ROW_DIE * s, s, f.x, f.y); break;
-      case 'snakeDie': spr(creatures, z.snake + k * s, ROW_DIE * s, s, f.x, f.y); break;
-      case 'shipBoom': spr(maze, z.ship + k * s, ROW_EXPLODE * s, s, f.x, f.y); break;
-      case 'globFace': spr(creatures, z.glob + k * s, ROW_FACE * s, s, f.x, f.y); break;
-      case 'snakeFace':
-        if (f.k >= (z.cols - 1) * 2) spr(creatures, z.snake + Math.min(z.cols - 1, (f.k >> 1) - (z.cols - 1)) * s, ROW_FACE * s, s, f.x, f.y);
-        break;
-    }
-  }
-
-  function drawBarrier(l) {
-    var e = l.maze.exit, T = l.T, h = Math.round(T * 1.2), w = Math.round(h * BARRIER[2] / BARRIER[3]);
-    var px = cx2px(e.x) + DX[e.dir] * (T / 2 - w / 2), py = cy2px(e.y) + DY[e.dir] * (T / 2 - w / 2);
-    g.save(); g.translate(Math.round(px), Math.round(py));
-    if (e.dir === U || e.dir === D) g.rotate(Math.PI / 2);
-    if (l.barrier > 15 || (l.barrier >> 1) % 2) g.drawImage(maze, BARRIER[0], BARRIER[1], BARRIER[2], BARRIER[3], -w / 2, -h / 2, w, h);
     g.restore();
   }
 
@@ -703,14 +708,16 @@
       var b = e.target.closest('button'); if (!b) return;
       settings[k] = b.getAttribute('data-val'); saveStore('settings', settings); syncSettingsUI();
       if (k === 'preset') renderRecords();
-      if (k === 'orient' && mode === 'title') { applyLayout(wantPortrait()); newDemo(); }
+      if (k === 'orient') applyLayout(wantPortrait());
     });
   });
   document.querySelectorAll('#settings input[type=checkbox]').forEach(function (c) {
     c.addEventListener('change', function () {
-      settings[c.getAttribute('data-set')] = c.checked; saveStore('settings', settings);
-      if (c.getAttribute('data-set') === 'panel' || c.getAttribute('data-set') === 'touch') applyLayout(LY.portrait);
-      if (c.getAttribute('data-set') === 'darkSound' && !c.checked) stopDark();
+      var k = c.getAttribute('data-set');
+      settings[k] = c.checked; saveStore('settings', settings);
+      if (k === 'panel' || k === 'touch') applyLayout(LY.portrait);
+      if (k === 'music') { if (!c.checked) stopMusic(); else if (lv && lv.state === 'play' && mode === 'level') startMusic(lv); }
+      if (k === 'assist') input.assist = c.checked;
     });
   });
   $('seedInput').addEventListener('input', function () { settings.seed = this.value.trim().slice(0, 24); saveStore('settings', settings); });
@@ -746,7 +753,10 @@
   // The shared helper writes "Son" next to the icon: keep the icon only in the top bar.
   var muteBtn = document.querySelector('[data-mute]');
   function muteIcon() { muteBtn.textContent = Lehcim.isMuted() ? '🔇' : '🔊'; muteBtn.setAttribute('aria-pressed', String(!Lehcim.isMuted())); }
-  muteBtn.addEventListener('click', function () { muteIcon(); if (Lehcim.isMuted()) stopDark(); });
+  muteBtn.addEventListener('click', function () {
+    muteIcon();
+    if (Lehcim.isMuted()) stopMusic(); else if (lv && lv.state === 'play' && mode === 'level' && !paused) startMusic(lv);
+  });
   muteIcon();
 
   applyLayout(wantPortrait());
@@ -764,6 +774,7 @@
 
   // ---------- Main loop: logic every 50 ms, drawing on each animation frame ----------
 
+  var demoInput = E.newInput();
   function step() {
     if (dialogOpen()) return;
     if (game && lv && mode !== 'title') {
@@ -771,11 +782,7 @@
       E.step(lv, input);
       handleEvents(lv, false);
     } else if (demo) {
-      var s = demo.ship;
-      if (demo.state === 'play' && !s.turn && (s.dir < 0 || s.t + E.SHIP_SPEED >= 1)) {
-        var d = E.autopilotDir(demo);
-        demoInput.held = d >= 0 ? [d] : [];
-      }
+      if (demo.ship.k === 0) { var d = E.autopilotDir(demo); demoInput.held = d >= 0 ? [d] : []; }
       E.step(demo, demoInput);
       handleEvents(demo, true);
       if (demo.state === 'won' || demo.state === 'lost' || demo.tick > 2400) newDemo();
@@ -783,7 +790,6 @@
     for (var i = popups.length - 1; i >= 0; i--) if (++popups[i].k > 24) popups.splice(i, 1);
     if (flash > 0) flash = Math.max(0, flash - 0.06);
   }
-  var demoInput = E.newInput();
 
   var acc = 0;
   function frame(now) {

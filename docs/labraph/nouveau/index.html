@@ -133,7 +133,7 @@
         <div class="t" style="--c:#4060ff"><div class="n">Score</div><div class="v" data-v="score">-</div></div>
       </div>
       <div class="timebar" id="timebar"><i></i></div>
-      <div class="chips"><span class="chip" id="chipBarrier">Barrière prête</span><span class="chip" id="chipExit">Sortie fermée</span><span class="chip" id="chipPreset">Normal</span></div>
+      <div class="chips"><span class="chip" id="chipBarrier">Barrière prête</span><span class="chip" id="chipExit">Sortie fermée</span><span class="chip" id="chipPreset">Original</span></div>
       <div class="seedline" id="seedline"></div>
     </section>
     <section class="card">
@@ -151,9 +151,9 @@
     <section class="card keys-card">
       <h2>Touches</h2>
       <div class="keys">
-        <span><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd></span><span>se déplacer (un virage demandé trop tôt est pris au carrefour suivant)</span>
+        <span><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd></span><span>se déplacer (avec l'aide aux virages, un virage demandé trop tôt est pris au carrefour suivant)</span>
         <span><kbd>Espace</kbd></span><span>tirer</span>
-        <span><kbd>Entrée</kbd></span><span>barrière devant la sortie (une fois par niveau, 3 s)</span>
+        <span><kbd>Entrée</kbd></span><span>barrière : sortie fermée aux créatures (une fois par niveau, 3 s)</span>
         <span><kbd>W</kbd> / <kbd>Maj</kbd></span><span>maintenir + flèche : pivoter sur place</span>
         <span><kbd>P</kbd> / <kbd>Échap</kbd></span><span>pause</span>
       </div>
@@ -169,33 +169,41 @@
 
 <dialog id="help"><div class="d-head"><h2>Règles du jeu LabRaph</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
   <div class="d-body">
-    <p>A chaque niveau, tu dois sortir du labyrinthe après avoir détruit tous les globules jaunes. Tu les élimines par contact (2 points) ou en leur tirant dessus (1 point).</p>
-    <p>Attention aux serpents rouges ! S'ils te touchent, tu meurs. Ils volent au-dessus du labyrinthe en ligne droite vers toi : un mur ne te protège pas, seule la distance compte. S'il te reste des balles, tu peux te défendre.</p>
-    <p>Ton temps est limité, et le labyrinthe devient invisible pendant les 20 dernières secondes. Aucun globule ne doit sortir avant toi, mais une fois par niveau tu peux bloquer la sortie par une barrière de 3 secondes.</p>
-    <p>A chaque niveau, tu obtiens au moins une balle supplémentaire, mais le total est plafonné à 5.</p>
-    <p><i>Les oeufs</i> s'ouvrent quand tu t'approches. Un oeuf de serpent te détecte de plus loin qu'un oeuf de globule, ce qui permet de les distinguer. Les globules encore dans leur oeuf comptent : la sortie reste fermée tant qu'ils ne sont pas détruits.</p>
-    <h3>Le labyrinthe</h3>
-    <p>Il grandit aux niveaux 3, 5 et 8 (les cases passent de 40 à 32, 20 puis 16 pixels), et les oeufs de serpents sont de plus en plus nombreux. Après le niveau 15, la difficulté continue de monter : les globules apprennent à fuir ton vaisseau, et les serpents sont plus nombreux et plus rapides.</p>
-    <p>Le temps de chaque niveau est calculé sur le vrai trajet : un pilote automatique parcourt le niveau (tous les globules et oeufs, puis la sortie) et ton temps vaut le sien multiplié par une marge, plus large aux premiers niveaux.</p>
-    <p>Si tu meurs, si le temps est écoulé ou si un globule s'échappe, tu perds une vie et le niveau recommence dans un nouveau labyrinthe.</p>
+    <p>A chaque niveau, tu dois sortir du labyrinthe après avoir détruit tous les globules jaunes. Tu les élimines par contact (2 points) ou en leur tirant dessus (1 point). Tu pars toujours du bord gauche et la sortie est la porte arrondie de la colonne de pierre, à droite (en portrait : départ en haut, sortie en bas). Tant qu'il reste un globule, la porte n'est qu'un cul-de-sac.</p>
+    <p><i>Les oeufs.</i> Au début du niveau, tous les globules et tous les serpents dorment dans des oeufs gris, tous pareils. Un oeuf de globule s'ouvre quand tu passes à 2 cases ou moins sur sa ligne ou sa colonne ; un oeuf de serpent s'ouvre dès que tu es à 3 cases ou moins, même en biais : un oeuf qui s'ouvre de loin cache un serpent. Toucher un oeuf de globule rapporte 2 points ; toucher un oeuf de serpent est mortel.</p>
+    <p><i>Les globules</i> longent le mur de gauche et finissent par trouver la sortie : aucun ne doit s'échapper. Quand tu arrives à 2 cases sur leur ligne ou leur colonne, ils fuient. Une fois par niveau, la touche Entrée ferme la sortie aux créatures pendant 3 secondes (toi, tu passes).</p>
+    <p><i>Les serpents rouges</i> te tuent au contact. Ils suivent les couloirs et, à chaque carrefour, prennent la direction qui les rapproche de toi à vol d'oiseau, sans voir les murs plus loin : un mur peut les égarer. Une balle les arrête (0 point) ; contre les globules, une balle continue sa course et peut en détruire plusieurs.</p>
+    <p>Tout le monde avance à la même vitesse (4 pixels toutes les 50 ms), case par case. Pendant les 20 dernières secondes, les murs s'effacent peu à peu. Si le temps est écoulé, si un serpent te touche ou si un globule s'échappe, tu perds une vie et le niveau recommence dans un nouveau labyrinthe, avec les balles que tu avais au début du niveau.</p>
+    <h3>Niveaux</h3>
+    <p>Tu commences avec 3 vies et 2 balles. Chaque niveau réussi ajoute des balles (de 1 à 5 selon le niveau, 5 au plus en tout). La taille des cases suit la table de l'original (40, 32, 40, 32, 40, 32, 20, 40, 32, 20, 16... pixels) : 13 x 10, 16 x 12, 27 x 20 ou 34 x 25 cases.</p>
+    <table class="hs" aria-label="Table des niveaux"><tbody>
+      <tr><td>Niveau 1 / 2</td><td>1 globule, 1 serpent, 90 / 100 s</td></tr>
+      <tr><td>Niveaux 3-4</td><td>2 et 2, 110 s</td></tr>
+      <tr><td>Niveaux 5-7</td><td>3 et 3, 120 s</td></tr>
+      <tr><td>Niveaux 8-11</td><td>4 et 4, 130 s</td></tr>
+      <tr><td>Niveaux 12-15</td><td>5 et 5, 140 s</td></tr>
+      <tr><td>Niveaux 16 et plus</td><td>5 et 5, de 150 à 180 s</td></tr>
+    </tbody></table>
     <h3>Touches</h3>
     <div class="keys">
-      <span><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd></span><span>se déplacer ; le vaisseau pivote d'abord vers la direction demandée</span>
+      <span><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd></span><span>se déplacer ; la direction se choisit au centre des cases</span>
       <span><kbd>Espace</kbd></span><span>tirer</span>
       <span><kbd>Entrée</kbd></span><span>barrière devant la sortie</span>
       <span><kbd>W</kbd> / <kbd>Maj</kbd></span><span>immobilisation : maintenir avec une flèche pour pivoter sur place (viser)</span>
       <span><kbd>P</kbd> / <kbd>Échap</kbd></span><span>pause (automatique si tu changes d'onglet)</span>
     </div>
     <p>Sur écran tactile : croix directionnelle (fais glisser ton doigt pour changer de direction) et boutons Tir, Barrière, Pivot. Tu peux aussi glisser le doigt sur le labyrinthe pour diriger le vaisseau, et le toucher brièvement pour tirer.</p>
+    <h3>Ce que cette version ajoute</h3>
+    <p>L'aide aux virages (réglable) retient une flèche tapée brièvement jusqu'au centre de case suivant, et une flèche demandée trop tôt ne fait plus s'arrêter le vaisseau devant un mur : il continue tout droit jusqu'au carrefour. Chaque labyrinthe est vérifié avant d'être joué (toutes les cases accessibles, pas d'oeuf de serpent qui s'ouvre dès le départ, trajet le plus court par tous les oeufs de globules jusqu'à la sortie inférieur à 60 % du temps). Les difficultés Facile et Difficile ne changent que les vies et le temps ; Original suit exactement les règles du jeu de 1999.</p>
     <h3>Défi du jour</h3>
-    <p>Tout le monde joue la même suite de labyrinthes aujourd'hui (difficulté Normal, à partir du niveau 1). Ton meilleur score du jour est conservé.</p>
+    <p>Tout le monde joue la même suite de labyrinthes aujourd'hui (règles d'origine, à partir du niveau 1). Ton meilleur score du jour est conservé.</p>
   </div>
   <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">J'ai compris</button></div></dialog>
 
 <dialog id="settings"><div class="d-head"><h2>Réglages</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
   <div class="d-body">
     <div class="field"><span class="label">Difficulté</span>
-      <div class="seg" data-set="preset" role="group" aria-label="Difficulté"><button data-val="facile">Facile</button><button data-val="normal">Normal</button><button data-val="difficile">Difficile</button></div></div>
+      <div class="seg" data-set="preset" role="group" aria-label="Difficulté"><button data-val="facile">Facile</button><button data-val="normal">Original</button><button data-val="difficile">Difficile</button></div></div>
     <div class="field"><span class="label">Niveau de départ</span>
       <div class="seg" data-set="startLevel" role="group" aria-label="Niveau de départ"><button data-val="1">1</button><button data-val="3">3</button><button data-val="5">5</button><button data-val="8">8</button><button data-val="16">16</button></div></div>
     <div class="field"><span class="label">Orientation du labyrinthe</span>
@@ -206,9 +214,10 @@
     <label class="switch"><span>Compte à rebours avant chaque niveau</span><input type="checkbox" data-set="countdown"></label>
     <label class="switch"><span>Indicateur de sortie</span><input type="checkbox" data-set="exitMark"></label>
     <label class="switch"><span>Effets visuels (secousse, éclair)</span><input type="checkbox" data-set="effects"></label>
-    <label class="switch"><span>Sons du labyrinthe invisible</span><input type="checkbox" data-set="darkSound"></label>
+    <label class="switch"><span>Musique des niveaux (sons 10 et 11 de l'original)</span><input type="checkbox" data-set="music"></label>
+    <label class="switch"><span>Aide aux virages (pression brève retenue, virage anticipé)</span><input type="checkbox" data-set="assist"></label>
     <label class="switch"><span>Toujours afficher les commandes tactiles</span><input type="checkbox" data-set="touch"></label>
-    <p class="sub">La difficulté, le niveau de départ, l'orientation et la graine s'appliquent à la prochaine partie.</p>
+    <p class="sub">Original = règles exactes du jeu de 1999 (3 vies, temps de la table). Facile : 5 vies et 25 % de temps en plus ; Difficile : 15 % de temps en moins. La difficulté, le niveau de départ et la graine s'appliquent à la prochaine partie.</p>
   </div>
   <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">OK</button></div></dialog>
 
