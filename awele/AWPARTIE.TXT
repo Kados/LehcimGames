@@ -1,0 +1,12 @@
+---------Jeu d'AWELE----------------------> par Lehcim Noil 
+
+Enregistrement des parties jouées à la dernière session.
+Attention, elles seront effacées à la session suivante !
+
+Chaque lettre correspond à une case selon la convention suivante:
+  Pour l'ordinateur: f e d c b a
+  Pour le joueur:    A B C D E F
+
+
+Partie 1  - Mode Tournoi  - Niveau 3
+A.a.B.f.C.b.D.a.E.f.F.f.B.b.C.c.F.f.E.a.F.c.D.d.F.c.E.e.F.f.

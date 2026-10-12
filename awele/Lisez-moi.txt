@@ -1,0 +1,17 @@
+Awélé
+ 
+Les 4 Fichiers awele.exe , awele.tut , imawele.lio et imawpal.bmp 
+doivent se situer dans le même répertoire pour que
+le jeu fonctionne .
+
+Si ce n'est déjà fait, placer wavemix.ini
+dans le répertoire Windows,
+wavmix16.dll et wing.dll
+dans le répertoire Windows\System .
+Ne pas laisser ces 3 fichiers dans le répertoire du jeu, 
+sinon vous risquez d'avoir des problèmes 
+(pas de musique ou pas d'image !)
+
+Amusez-vous bien .
+
+PS: pour les amateurs, les parties jouées lors d'une session sont enregistrées dans le fichier AwParties.txt. 

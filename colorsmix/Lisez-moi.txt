@@ -1,0 +1,20 @@
+colours-MIX 
+
+Les 3 Fichiers colours-MIX.exe , imcol.lio et
+imcolpal.bmp doivent se situer
+dans le même répertoire pour que le jeu fonctionne .
+
+Si ce n'est déjà fait ,placer wavemix.ini
+dans le répertoire windows ,
+wavmix16.dll et wing.dll
+dans le répertoire windows\system .
+Ne pas laisser ces 3 fichiers dans le répertoire du jeu, 
+sinon vous risquez d'avoir des problèmes 
+(pas de musique ou pas d'image !)
+
+
+La version 1 ne contenait que le mode 2 joueurs.
+Cette version 2 permet de jouer seul.
+
+Amusez-vous bien .
+ 

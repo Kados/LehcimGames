@@ -1,0 +1,16 @@
+Stack
+ 
+Les 5 Fichiers stack.exe , imstack.lio , imstpal.bmp ,stackmus.mid
+et stacks.tut doivent se situer dans le même répertoire 
+pour que le jeu fonctionne .
+
+Si ce n'est déjà fait, placer wavemix.ini
+dans le répertoire Windows,
+wavmix16.dll et wing.dll
+dans le répertoire Windows\System .
+Ne pas laisser ces 3 fichiers dans le répertoire du jeu, 
+sinon vous risquez d'avoir des problèmes 
+(pas de musique ou pas d'image !)
+
+
+Amusez-vous bien . 

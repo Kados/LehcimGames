@@ -1,0 +1,16 @@
+kevgame 
+
+Les 4 Fichiers kevgame.exe , imkev3.lio ,
+imkevpal.bmp et kevmus.mid doivent se situer
+dans le même répertoire pour que le jeu fonctionne .
+
+Si ce n'est déjà fait ,placer wavemix.ini
+dans le répertoire windows ,
+wavmix16.dll et wing.dll
+dans le répertoire windows\system .
+Ne pas laisser ces 3 fichiers dans le répertoire du jeu, 
+sinon vous risquez d'avoir des problèmes 
+(pas de musique ou pas d'image !)
+
+
+Amusez-vous bien . 
