@@ -2,11 +2,19 @@
  * Agora (nouvelle version) - rules engine and computer player.
  * No DOM: loaded by the page, by the Web Worker (importScripts) and by node.
  *
- * Board: 6x6 squares, index = row*6 + col. Colours: 0 = white, 1 = black.
+ * Board: 6x6 squares, index = row*6 + col (row 0 = far side, row 5 = the
+ * player's side). Colours: 0 = white, 1 = black.
  * A stack never holds more than two segments: the controlling pieces on top
  * (colour col[i], count top[i]) and, underneath, the prisoners of the other
- * colour (count bot[i]); top[i] >= bot[i] always holds (same rules as the
- * original version, see ../rules.js).
+ * colour (count bot[i]); top[i] >= bot[i] always holds.
+ *
+ * Rules of the original program (checked under Wine, same as ../rules.js):
+ *  - the board is terraced: outer ring 5 piece thicknesses high, middle ring 2,
+ *    central 2x2 square 0. The height compared for a capture (>=) or a prisoner
+ *    move (<=) is LEVEL[square] + number of pieces of the stack;
+ *  - a piece is isolated (and may climb on its own colour) when exactly one
+ *    piece of its colour, prisoners included, stands on the 8 neighbours;
+ *  - the side to move with no legal move has lost; there is no draw.
  *
  * Improvements over the original computer player:
  *  - Zobrist hashing (two 32-bit keys, updated incrementally by play/undo);
@@ -15,9 +23,7 @@
  *  - principal variation search (null windows after the first move);
  *  - quiescence search on captures and revolutions (horizon effect);
  *  - cheaper evaluation: mobility counted without building move lists and
- *    the move list of the leaf reused (the original generated it 3 times);
- *  - draw rules known by the search: a repeated position (game history or
- *    current line) and the 400 move limit score 0.
+ *    the move list of the leaf reused (the original generated it 3 times).
  * Exposes the global AgoraEngine (or module.exports under node).
  */
 (function (root) {
@@ -25,7 +31,13 @@
 
   var N = 6, SIZE = N * N;
   var SIMPLE = 0, STACK = 1, CAPTURE = 2, PRISON = 3; // move kinds
-  var MAX_PLIES = 400;                                // draw after 400 moves
+
+  // Height of each square's floor, in piece thicknesses: outer ring 5, middle ring 2, centre 0.
+  var LEVEL = new Int8Array(SIZE);
+  for (var q = 0; q < SIZE; q++) {
+    var ring = Math.min((q / N) | 0, q % N, N - 1 - ((q / N) | 0), N - 1 - q % N);
+    LEVEL[q] = ring === 0 ? 5 : ring === 1 ? 2 : 0;
+  }
 
   // Neighbour lists (8 directions), flat for speed: NB[i*8 .. i*8+NC[i]-1].
   var NEIGH = [], NB = new Int8Array(SIZE * 8), NC = new Int8Array(SIZE);
@@ -42,6 +54,7 @@
 
   // ---------- Zobrist keys ----------
   // One pair of random 32-bit numbers per (square, colour, top, bot); empty = 0.
+  // The square is part of the key, so the terrace level is implied.
   var ZT = 17; // top and bot are at most 16
   var Z1 = new Int32Array(SIZE * 2 * ZT * ZT), Z2 = new Int32Array(SIZE * 2 * ZT * ZT);
   var ZS1, ZS2;
@@ -92,7 +105,7 @@
     for (k = 0; k < this.top[i]; k++) s.push(this.col[i]);
     return s;
   };
-  // Compact key of the position (repetitions); the hash pair as a string.
+  // Compact key of the position; the hash pair as a string.
   Pos.prototype.key = function () { return (this.h1 >>> 0).toString(36) + '.' + (this.h2 >>> 0).toString(36); };
   // Builds a position from stacks given bottom -> top (arrays of 0/1). Returns null if impossible.
   Pos.fromStacks = function (stacks, side) {
@@ -111,16 +124,15 @@
   };
   Pos.prototype.toStacks = function () { var s = []; for (var i = 0; i < SIZE; i++) s.push(this.stack(i)); return s; };
 
-  // Default opening (same as the original version): the 16 border squares that
-  // are not corners, each side reading B W W B or W B B W.
-  function initial() {
+  // Opening of the original: each side has its 6 pieces on its back row plus the
+  // two squares in front of its corners. `front` is the colour placed on rows 4-5
+  // (the player's side, near the camera); the other colour gets rows 0-1.
+  function initial(front) {
+    front = front || 0;
     var p = new Pos();
-    var rows = { 0: [0, 1, 1, 0], 5: [1, 0, 0, 1] };
-    var cols = { 0: [0, 1, 1, 0], 5: [1, 0, 0, 1] };
-    for (var k = 0; k < 4; k++) {
-      put(p, 0 * N + k + 1, rows[0][k]); put(p, 5 * N + k + 1, rows[5][k]);
-      put(p, (k + 1) * N + 0, cols[0][k]); put(p, (k + 1) * N + 5, cols[5][k]);
-    }
+    for (var c = 0; c < N; c++) { put(p, 5 * N + c, front); put(p, c, 1 - front); }
+    put(p, 4 * N, front); put(p, 4 * N + 5, front);
+    put(p, N, 1 - front); put(p, N + 5, 1 - front);
     return p.rehash();
   }
   function put(p, i, c) { p.col[i] = c; p.top[i] = 1; p.bot[i] = 0; }
@@ -132,18 +144,25 @@
   function mTo(m) { return (m >> 6) & 63; }
   function mKind(m) { return m >> 12; }
 
+  // Number of pieces of colour c (free pieces and prisoners) on the 8 neighbours.
+  // A piece is isolated when this is exactly 1.
   function ownNeighbours(p, i, c) {
     var n = 0, b = i * 8, e = b + NC[i], col = p.col;
-    for (var k = b; k < e; k++) if (col[NB[k]] === c) n++;
+    for (var k = b; k < e; k++) {
+      var j = NB[k], cj = col[j];
+      if (cj === c) n += p.top[j]; else if (cj >= 0) n += p.bot[j];
+    }
     return n;
   }
+  // Height of the top of the stack on square i (floor level + pieces).
+  function topHeight(p, i) { return LEVEL[i] + p.top[i] + p.bot[i]; }
 
   // Fills buf with the legal moves of the side to move; returns their number.
   function gen(p, buf) {
     var n = 0, me = p.side, col = p.col, top = p.top, bot = p.bot;
     for (var f = 0; f < SIZE; f++) {
       if (col[f] !== me) continue;
-      var hf = top[f] + bot[f], b = f * 8, e = b + NC[f], isolated = -1;
+      var hf = LEVEL[f] + top[f] + bot[f], b = f * 8, e = b + NC[f], isolated = -1;
       for (var k = b; k < e; k++) {
         var t = NB[k], ct = col[t];
         if (ct < 0) buf[n++] = f | (t << 6);
@@ -151,7 +170,7 @@
           if (isolated < 0) isolated = ownNeighbours(p, f, me) === 1 ? 1 : 0;
           if (isolated) buf[n++] = f | (t << 6) | (STACK << 12);
         } else {
-          var ht = top[t] + bot[t];
+          var ht = LEVEL[t] + top[t] + bot[t];
           if (hf >= ht) buf[n++] = f | (t << 6) | (CAPTURE << 12);
           if (hf <= ht) buf[n++] = f | (t << 6) | (PRISON << 12);
         }
@@ -164,14 +183,15 @@
     var n = 0, col = p.col, top = p.top, bot = p.bot;
     for (var f = 0; f < SIZE; f++) {
       if (col[f] !== s) continue;
-      var hf = top[f] + bot[f], b = f * 8, e = b + NC[f], own = 0;
+      // own: pieces of colour s around (prisoners included); ownSq: squares it could climb on
+      var hf = LEVEL[f] + top[f] + bot[f], b = f * 8, e = b + NC[f], own = 0, ownSq = 0;
       for (var k = b; k < e; k++) {
         var t = NB[k], ct = col[t];
         if (ct < 0) n++;
-        else if (ct === s) own++;
-        else { var ht = top[t] + bot[t]; n += (hf >= ht ? 1 : 0) + (hf <= ht ? 1 : 0); }
+        else if (ct === s) { own += top[t]; ownSq++; }
+        else { own += bot[t]; var ht = LEVEL[t] + top[t] + bot[t]; n += (hf >= ht ? 1 : 0) + (hf <= ht ? 1 : 0); }
       }
-      if (own === 1) n++;
+      if (own === 1) n += ownSq;
     }
     return n;
   }
@@ -275,14 +295,15 @@
   // ---------- Evaluation ----------
   var WIN = 100000;
 
-  // Same terms and weights as the original evaluation; mobility counts are passed in
-  // (nMe = moves of the side to move, already known by the caller).
+  // Same terms and weights as the evaluation of ../rules.js; the height term is the
+  // real height of the stack top (terrace level + pieces), capped at 9 thicknesses.
+  // Mobility counts are passed in (nMe = moves of the side to move, already known).
   function evaluate(p, nMe) {
     var me = p.side, s = 0, col = p.col, top = p.top, bot = p.bot;
     for (var i = 0; i < SIZE; i++) {
       var c = col[i]; if (c < 0) continue;
-      var t = top[i], b = bot[i], h = t + b;
-      var v = t * 10 + 14 + (h < 4 ? h : 4) * 2 - b * 6;
+      var t = top[i], b = bot[i], h = LEVEL[i] + t + b;
+      var v = t * 10 + 14 + (h < 9 ? h : 9) - b * 6;
       if (b > 0 && t - b <= 1) v -= 4;
       if (c === me) s += v - b * 4; else s += b * 4 - v;
     }
@@ -306,19 +327,10 @@
     this.bufs = []; this.scores = [];
     for (var k = 0; k <= MAXPLY + 16; k++) { this.bufs.push(new Int32Array(256)); this.scores.push(new Int32Array(256)); }
     this.sv = new Int32Array((MAXPLY + 16) * 8);
-    this.path1 = new Int32Array(MAXPLY + 16); this.path2 = new Int32Array(MAXPLY + 16);
     this.useQ = true; this.useTT = true; this.qMax = 8;
   }
   Engine.prototype.clear = function () {
     this.tk1.fill(0); this.tk2.fill(0); this.tmove.fill(0); this.tflag.fill(0); this.hist.fill(0);
-  };
-
-  // Repetition: the position already occurred in the game or earlier in the line.
-  Engine.prototype.repeated = function (p, ply) {
-    var h1 = p.h1, h2 = p.h2;
-    for (var k = ply - 2; k >= 0; k -= 2) if (this.path1[k] === h1 && this.path2[k] === h2) return true;
-    var g = this.game[h1];
-    return g !== undefined && g === h2;
   };
 
   // Scores moves for ordering (higher first).
@@ -347,9 +359,6 @@
     if ((++this.nodes & 1023) === 0 && Date.now() > this.deadline) this.stop = true;
     if (this.stop) return 0;
     if (ply > this.seldepth) this.seldepth = ply;
-    if (this.plies0 + ply >= MAX_PLIES) return 0;          // 400 moves: draw
-    if (this.repeated(p, ply)) return 0;                     // repetition: draw
-    this.path1[ply] = p.h1; this.path2[ply] = p.h2;
     var buf = this.bufs[ply], sc = this.scores[ply];
     var n = gen(p, buf);
     if (!n) return -WIN + ply;                               // cannot play: lost
@@ -434,8 +443,9 @@
   };
 
   // Best move for p.side.
-  // opts: {level, timeMs, maxDepth, history: [[h1,h2],...] positions already played
-  //        (side to move included), plies: moves already played, mainThread, random}
+  // opts: {level, timeMs, maxDepth, mainThread, random, fixedDepth, q, rng}
+  // There is no draw in Agora: the value of a position does not depend on the
+  // moves that led to it, so no game record is passed to the search.
   // Returns {move, score, depth, seldepth, nodes, ms, pv} (move -1 if no legal move).
   Engine.prototype.think = function (p0, opts) {
     opts = opts || {};
@@ -445,12 +455,6 @@
     var maxDepth = opts.maxDepth || L.depth;
     this.useQ = opts.q != null ? opts.q : L.q;
     this.deadline = t0 + timeMs; this.stop = false; this.nodes = 0; this.seldepth = 0;
-    this.plies0 = opts.plies || 0;
-    this.game = {};
-    var hist = opts.history || [];
-    for (var h = 0; h < hist.length; h++) this.game[hist[h][0]] = hist[h][1];
-    // the root itself counts as already seen (its key is in the history)
-    this.game[p.h1] = p.h2;
     this.killers.fill(0);
     for (var hi = 0; hi < 16384; hi++) this.hist[hi] >>= 3;
 
@@ -465,7 +469,6 @@
     ms = order.map(function (e) { return e[1]; });
 
     var best = ms[0], bestScore = 0, scores = [], randomize = opts.random != null ? opts.random : L.random;
-    this.path1[0] = p.h1; this.path2[0] = p.h2;
     var sv = this.sv;
     for (var d = 1; d <= maxDepth; d++) {
       var alpha = -Infinity, bestD = -1, sc = [];
@@ -525,8 +528,8 @@
   function reset() { if (shared) shared.clear(); }
 
   var api = {
-    N: N, SIZE: SIZE, SIMPLE: SIMPLE, STACK: STACK, CAPTURE: CAPTURE, PRISON: PRISON, MAX_PLIES: MAX_PLIES,
-    NEIGH: NEIGH, Pos: Pos, initial: initial, moves: moves, countMoves: countMoves, play: play, undo: undo,
+    N: N, SIZE: SIZE, SIMPLE: SIMPLE, STACK: STACK, CAPTURE: CAPTURE, PRISON: PRISON,
+    NEIGH: NEIGH, LEVEL: LEVEL, topHeight: topHeight, Pos: Pos, initial: initial, moves: moves, countMoves: countMoves, play: play, undo: undo,
     mk: mk, mFrom: mFrom, mTo: mTo, mKind: mKind, counts: counts, evaluate: evaluate,
     ownNeighbours: ownNeighbours, sqName: sqName, moveName: moveName, WIN: WIN, LEVELS: LEVELS,
     Engine: Engine, think: think, reset: reset

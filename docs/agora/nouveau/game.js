@@ -1,6 +1,7 @@
 /*
- * Agora (nouvelle version) - Lehcim Noil's Windows 3.x game, same rules and
- * same wooden textures, with a modern interface: side panel, undo, hint,
+ * Agora (nouvelle version) - Lehcim Noil's Windows 3.x game, same rules as the
+ * original program (terraced board, opening, isolated piece, no draw) and same
+ * wooden textures, with a modern interface: side panel, undo, hint,
  * move history (A1-F6), camera presets, end of game summary.
  * The computer player (engine.js) runs in a Web Worker (ai-worker.js) and
  * falls back to the main thread when workers are not available (file://).
@@ -25,23 +26,24 @@
   // ---------- Settings (localStorage) ----------
 
   var KEY = 'lehcim.agora.nv';
-  var settings = { level: 2, starter: 'human', speed: reduceMotion ? 'fast' : 'normal', coords: true, targets: true, info: false };
+  var settings = { level: 1, starter: 'human', speed: reduceMotion ? 'fast' : 'normal', coords: true, targets: true, info: false };
   try { var sv = JSON.parse(localStorage.getItem(KEY)); if (sv) for (var k in settings) if (sv[k] != null) settings[k] = sv[k]; } catch (e) { /* ignore */ }
   function saveSettings() { try { localStorage.setItem(KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ } }
   function speedK() { return settings.speed === 'slow' ? 1.6 : settings.speed === 'fast' ? 0.5 : 1; }
 
-  var record = { 1: [0, 0, 0], 2: [0, 0, 0], 3: [0, 0, 0] }; // wins, draws, losses per level
+  var record = { 1: [0, 0, 0], 2: [0, 0, 0], 3: [0, 0, 0] }; // wins, draws (older versions only), losses per level
   try { var rv = JSON.parse(localStorage.getItem(KEY + '.record')); if (rv) record = rv; } catch (e) { /* ignore */ }
   function saveRecord() { try { localStorage.setItem(KEY + '.record', JSON.stringify(record)); } catch (e) { /* ignore */ } }
 
   // ---------- Assets ----------
 
   var tex = {}, sheet = null, bg = null;
-  var TEX_IDS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36];
-  var SPR = { // text sprites of 39.png
-    over: [908, 246, 286, 27], yourTurn: [925, 292, 243, 26],
-    incomplete1: [912, 321, 258, 21], incomplete2: [1004, 341, 193, 17],
-    impossible1: [912, 362, 210, 17], impossible2: [1040, 381, 150, 17]
+  var TEX_IDS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 27, 28, 29, 30, 31, 32, 33, 35, 36, 38];
+  var SPR = { // text sprites of 39.png and where the original draws them in its 640x400 picture
+    over: [908, 246, 286, 27, 178, 186],                  // PARTIE TERMINEE
+    yourTurn: [925, 292, 243, 26, 195, 192],              // A TOI DE JOUER
+    incomplete1: [912, 321, 258, 21, 182, 181], incomplete2: [1004, 341, 193, 17, 274, 201], // UNE PILE EST INCOMPLETE. / TERMINE LA !
+    impossible1: [912, 362, 210, 17, 182, 182], impossible2: [1040, 381, 150, 17, 310, 201]  // POSITION IMPOSSIBLE ! / RECOMMENCE ...
   };
   var FRAMES = [];
   (function () {
@@ -55,24 +57,41 @@
     revolt: A + 'sounds/8.wav', bad: A + 'sounds/2.wav', intro: A + 'sounds/4.wav', win: A + 'sounds/11.wav', lose: A + 'sounds/12.wav' };
 
   // ---------- Camera / projection ----------
+  // Default view measured on the original program (as in ../game.js): head-on,
+  // 44.5 degrees above the board, focal length 1036 px for a 640x400 picture
+  // (smaller when the board would not fit the canvas).
+  // Unlike the original, the look point turns with the camera (rotation around
+  // the centre of the board), so the presets stay centred.
 
   var DEG = Math.PI / 180;
-  var VIEW0 = { yaw: -25 * DEG, pitch: 48 * DEG };
-  var cam = { yaw: VIEW0.yaw, pitch: VIEW0.pitch, yawT: VIEW0.yaw, pitchT: VIEW0.pitch, dist: 13, f: 570, cx: W / 2, cy: 208 };
+  var VIEW0 = { yaw: 0, pitch: 44.5 * DEG };
+  var PITCH_MIN = 18 * DEG, PITCH_MAX = 89 * DEG;
+  var cam = { yaw: VIEW0.yaw, pitch: VIEW0.pitch, yawT: VIEW0.yaw, pitchT: VIEW0.pitch, dist: 13.25, look: 0.76, f0: 1036, f: 1036, cx: W / 2, cy: 205 };
   var eye, fwd, right, up;
   function setupCamera() {
-    var cp = Math.cos(cam.pitch);
-    eye = [cam.dist * cp * Math.sin(cam.yaw), cam.dist * Math.sin(cam.pitch), cam.dist * cp * Math.cos(cam.yaw)];
-    var target = [0, -0.3, 0];
-    fwd = norm([target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]]);
+    var sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw), cp = Math.cos(cam.pitch);
+    var L = [cam.look * sy, 0, cam.look * cy];
+    eye = [L[0] + cam.dist * cp * sy, cam.dist * Math.sin(cam.pitch), L[2] + cam.dist * cp * cy];
+    fwd = norm([L[0] - eye[0], L[1] - eye[1], L[2] - eye[2]]);
     right = norm(cross(fwd, [0, 1, 0]));
     up = cross(right, fwd);
+    // zoom out when the board (base included) would not fit: views from above or at 45 degrees
+    var fx = 0, fu = 0, fd = 0;
+    for (var k = 0; k < 8; k++) {
+      var dx = (k & 1 ? 3 : -3) - eye[0], dy = (k & 2 ? 0 : -BASE_H) - eye[1], dz = (k & 4 ? 3 : -3) - eye[2];
+      var cz = dx * fwd[0] + dy * fwd[1] + dz * fwd[2];
+      var px = (dx * right[0] + dy * right[1] + dz * right[2]) / cz, py = (dx * up[0] + dy * up[1] + dz * up[2]) / cz;
+      fx = Math.max(fx, Math.abs(px)); fu = Math.max(fu, py); fd = Math.max(fd, -py);
+    }
+    var m = 14;
+    cam.f = Math.min(cam.f0, (W / 2 - m) / fx, fu > 0 ? (cam.cy - m) / fu : 1e9, fd > 0 ? (H - cam.cy - m) / fd : 1e9);
   }
   function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
   function norm(a) { var l = Math.hypot(a[0], a[1], a[2]); return [a[0] / l, a[1] / l, a[2] / l]; }
   function proj(x, y, z) {
     var dx = x - eye[0], dy = y - eye[1], dz = z - eye[2];
     var cz = dx * fwd[0] + dy * fwd[1] + dz * fwd[2];
+    if (cz < 0.05) cz = 0.05;
     var cx = dx * right[0] + dy * right[1] + dz * right[2];
     var cy = dx * up[0] + dy * up[1] + dz * up[2];
     return { x: cam.cx + cam.f * cx / cz, y: cam.cy - cam.f * cy / cz };
@@ -94,14 +113,14 @@
     SCALE = cssW / W * dpr;
     canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
     canvas.style.width = cssW + 'px'; canvas.style.height = cssH + 'px';
-    cam.cx = W / 2; cam.cy = H / 2 - (narrow ? 4 : 12);
-    cam.f = narrow ? 720 : 630;
+    cam.cx = W / 2; cam.cy = H / 2;
   }
   window.addEventListener('resize', fit);
 
   // ---------- Texture mapping ----------
 
   function texQuad(img, s, P) {
+    if (!img) return;
     var x0 = s[0], y0 = s[1], x1 = s[0] + s[2], y1 = s[1] + s[3];
     texTri(img, x0, y0, x1, y0, x0, y1, P[0], P[1], P[3]);
     texTri(img, x1, y1, x0, y1, x1, y0, P[2], P[3], P[1]);
@@ -129,56 +148,87 @@
   }
   function polyPath(P) { ctx.beginPath(); ctx.moveTo(P[0].x, P[0].y); for (var i = 1; i < P.length; i++) ctx.lineTo(P[i].x, P[i].y); ctx.closePath(); }
 
-  // ---------- Board geometry ----------
+  // ---------- Board geometry: terraced like the original ----------
+  // Outer ring at the top (y = 0), middle ring 3 piece thicknesses lower,
+  // central 2x2 square 2 more thicknesses lower (R.LEVEL: 5, 2, 0 thicknesses).
 
-  var PH = 0.17, PS = 0.39;
-  var BASE = 3.18, BASE_H = 0.55;
-  var LIGHT = norm([-0.55, 0, 0.83]);
+  var LEVEL = R.LEVEL;
+  var TH = 0.128, PS = 0.38;      // piece thickness, half size of a piece (0.76 square)
+  var BASE_H = 0.8;               // depth of the wooden base below the outer ring
+  var LIGHT = norm([-0.3, 0, 1]); // horizontal light for side shading (front faces are the lightest)
   var sqTex = [];
   function cellX(i) { return (i % N) - 2.5; }
   function cellZ(i) { return ((i / N) | 0) - 2.5; }
-  (function () {
-    var seed = 7;
+  function floorY(i) { return (LEVEL[i] - 5) * TH; }
+  (function () {                  // light outer ring, darker towards the centre
+    var seed = 11;
     for (var i = 0; i < N * N; i++) {
       seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      var r = (i / N) | 0, c = i % N, inner = r > 0 && r < 5 && c > 0 && c < 5;
-      sqTex.push({ id: (inner ? 9 : 6) + (seed >> 8) % 3, half: (seed >> 4) & 1 });
+      var base = LEVEL[i] === 5 ? 6 : LEVEL[i] === 2 ? 9 : 12;
+      sqTex.push({ id: base + (seed >> 8) % 3, half: (seed >> 4) & 1 });
     }
   })();
   function shade(nx, nz, n) {
     var d = nx * LIGHT[0] + nz * LIGHT[2];
     return Math.max(0, Math.min(n - 1, Math.floor((1 - d) / 2 * n)));
   }
-  function faceVisible(px, pz, nx, nz) { return nx * (eye[0] - px) + nz * (eye[2] - pz) > 0; }
-  function drawBox(x0, x1, y0, y1, z0, z1, sideTex, nShades, topTex) {
-    var faces = [
-      [0, -1, [x1, z0], [x0, z0]], [0, 1, [x0, z1], [x1, z1]],
-      [-1, 0, [x0, z0], [x0, z1]], [1, 0, [x1, z1], [x1, z0]]
-    ];
-    faces.forEach(function (fc) {
-      var mx = (fc[2][0] + fc[3][0]) / 2, mz = (fc[2][1] + fc[3][1]) / 2;
-      if (!faceVisible(mx, mz, fc[0], fc[1])) return;
-      var t = sideTex(shade(fc[0], fc[1], nShades));
-      texQuad(t[0], t[1], [proj(fc[2][0], y1, fc[2][1]), proj(fc[3][0], y1, fc[3][1]), proj(fc[3][0], y0, fc[3][1]), proj(fc[2][0], y0, fc[2][1])]);
-    });
-    if (topTex) texQuad(topTex[0], topTex[1], topQuad(x0, x1, z0, z1, y1));
-  }
+  function faceVisible(px, py, pz, nx, nz) { return nx * (eye[0] - px) + nz * (eye[2] - pz) > 0; }
   function topQuad(x0, x1, z0, z1, y) { return [proj(x0, y, z0), proj(x1, y, z0), proj(x1, y, z1), proj(x0, y, z1)]; }
-  function pieceTop(c) { return [tex[c ? 31 : 27], [0, 0, 128, 64]]; }
-  function pieceSide(c) { return function (s) { return [tex[(c ? 34 : 28) + s], [0, 0, 256, 10]]; }; }
-  function drawPiece(x, z, y, c) { drawBox(x - PS, x + PS, y, y + PH, z - PS, z + PS, pieceSide(c), 3, pieceTop(c)); }
+
+  var DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // (dx, dz) of the four sides: back, front, left, right
+  function neighbourY(i, d) {
+    var r = ((i / N) | 0) + d[1], c = (i % N) + d[0];
+    if (r < 0 || r >= N || c < 0 || c >= N) return -BASE_H;
+    return floorY(r * N + c);
+  }
+  // Vertical wall on side d of square i, from y0 up to y1: the side of the base
+  // (textures 15-18) or a riser between two levels (textures 19-22).
+  function drawWall(i, d, y0, y1) {
+    var x = cellX(i), z = cellZ(i), ax, az, bx, bz; // wall ends seen from outside: a left, b right
+    if (d[1] < 0) { ax = x + 0.5; az = z - 0.5; bx = x - 0.5; bz = z - 0.5; }
+    else if (d[1] > 0) { ax = x - 0.5; az = z + 0.5; bx = x + 0.5; bz = z + 0.5; }
+    else if (d[0] < 0) { ax = x - 0.5; az = z - 0.5; bx = x - 0.5; bz = z + 0.5; }
+    else { ax = x + 0.5; az = z + 0.5; bx = x + 0.5; bz = z - 0.5; }
+    if (!faceVisible((ax + bx) / 2, 0, (az + bz) / 2, d[0], d[1])) return;
+    var img, src, k = (i % N + ((i / N) | 0)) % 4;
+    if (y0 <= -BASE_H + 1e-6) { img = tex[15 + shade(d[0], d[1], 4)]; src = [(k % 6) * 160, 0, 160, 16]; }
+    else { img = tex[19 + shade(d[0], d[1], 4)]; src = [k * 128, 0, 128, 16]; }
+    texQuad(img, src, [proj(ax, y1, az), proj(bx, y1, bz), proj(bx, y0, bz), proj(ax, y0, az)]);
+  }
+  // A square with its walls; mark: 'sel' (texture 33, white) or 'hover' (texture 32).
+  function drawSquare(i, mark) {
+    var y = floorY(i), x = cellX(i), z = cellZ(i);
+    DIRS.forEach(function (d) { var yn = neighbourY(i, d); if (yn < y - 1e-6) drawWall(i, d, yn, y); });
+    var t = sqTex[i], img = tex[t.id], src = [t.half * 128, 0, 128, 64];
+    if (mark === 'sel') { img = tex[33]; src = [0, 0, 128, 64]; }
+    else if (mark === 'hover') { img = tex[32]; src = [0, 0, 128, 64]; }
+    texQuad(img, src, topQuad(x - 0.5, x + 0.5, z - 0.5, z + 0.5, y));
+  }
+
+  var SIDE_W = [28, 29, 30], SIDE_B = [35, 36, 38]; // piece side textures, light to dark
+  // A piece standing at (x, z) with its lower face at height y.
+  function drawPiece(x, z, y, c) {
+    var x0 = x - PS, x1 = x + PS, z0 = z - PS, z1 = z + PS, y1 = y + TH, sides = c ? SIDE_B : SIDE_W;
+    [[0, -1, x1, z0, x0, z0], [0, 1, x0, z1, x1, z1], [-1, 0, x0, z0, x0, z1], [1, 0, x1, z1, x1, z0]].forEach(function (fc) {
+      if (!faceVisible((fc[2] + fc[4]) / 2, y, (fc[3] + fc[5]) / 2, fc[0], fc[1])) return;
+      texQuad(tex[sides[shade(fc[0], fc[1], 3)]], [0, 0, 256, 10],
+        [proj(fc[2], y1, fc[3]), proj(fc[4], y1, fc[5]), proj(fc[4], y, fc[5]), proj(fc[2], y, fc[3])]);
+    });
+    texQuad(tex[c ? 31 : 27], [0, 0, 128, 64], topQuad(x0, x1, z0, z1, y1));
+  }
 
   // ---------- Game state ----------
 
-  var pos = R.initial();
+  var pos = R.initial(0);
   var human = 0;
   var phase = 'loading';     // loading | intro | start | fly | play | anim | think | setup | over
   var hover = -1, sel = -1, dragging = false, prisonMode = false, kbd = -1;
   var anim = null, flyers = null, flyersDone = null, banner = null, bannerDone = null, floatText = null;
   var lastMove = -1, hintMove = -1, result = '', overInfo = null;
+  var showYourTurn = false;  // "A TOI DE JOUER" after a "Nouvelle position", until the player's first move
   // Game record: snapshots[k] = position before ply k, plays[k] = {m, side, name, flags}.
-  var snapshots = [], plays = [], repCount = {}, gameStart = 0, hintsUsed = 0, undosUsed = 0;
-  var setupStacks = null, setupCount = 0, setupOpen = -1, setupColor = 0;
+  var snapshots = [], plays = [], gameStart = 0, hintsUsed = 0, undosUsed = 0;
+  var setupStacks = null, setupCount = 0, setupColor = 0;
   var ambiguousTold = false;
 
   function stacksOf(p) { var s = []; for (var i = 0; i < N * N; i++) s.push(p.stack(i)); return s; }
@@ -202,28 +252,17 @@
     } else { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
     if (phase === 'intro' || phase === 'loading') { drawIntro(now); return; }
 
-    drawBox(-BASE, BASE, -BASE_H, 0, -BASE, BASE, function (s) { return [tex[15 + s], [0, 0, 1024, 16]]; }, 4, [tex[6], [0, 0, 128, 64]]);
-    if (settings.coords) drawCoords();
-
     var stacks = setupStacks || stacksOf(pos);
     var targets = {}; // square -> {move, cap, pri}
     if (sel >= 0 && settings.targets) R.moves(pos, sel).forEach(function (m) {
       var t = R.mTo(m), o = targets[t] || (targets[t] = {}), kd = R.mKind(m);
       if (kd === R.PRISON) o.pri = true; else if (kd === R.CAPTURE) o.cap = true; else o.move = true;
     });
-    for (var i = 0; i < N * N; i++) {
-      var x = cellX(i), z = cellZ(i), t = sqTex[i];
-      var id = t.id, src = [t.half * 128, 0, 128, 64];
-      if (i === sel) { id = 33; src = [0, 0, 128, 64]; }
-      else if ((i === hover || i === kbd) && phase !== 'over') { id = 32; src = [0, 0, 128, 64]; }
-      texQuad(tex[id], src, topQuad(x - 0.49, x + 0.49, z - 0.49, z + 0.49, 0));
-    }
-    if (lastMove >= 0 && phase !== 'setup' && !anim) {
-      outlineSquare(R.mFrom(lastMove), 0, 'rgba(255,200,80,.7)', 2, true);
-    }
 
+    // painter's algorithm: each square (walls, top, stack) from the farthest to the nearest,
+    // so a higher square in front hides the foot of the stacks behind it
     var order = [];
-    for (i = 0; i < N * N; i++) order.push({ sq: i, d: distTo(cellX(i), cellZ(i)) });
+    for (var i = 0; i < N * N; i++) order.push({ sq: i, d: distTo(cellX(i), cellZ(i)) });
     var mover = anim ? animState(now) : null;
     if (mover && !mover.under) order.push({ mover: mover, d: distTo(mover.x, mover.z) - 0.01 });
     if (flyers) flyers.forEach(function (f) { var st = flyerState(f, now); if (st) order.push({ mover: st, d: distTo(st.x, st.z) - 0.01 }); });
@@ -232,45 +271,49 @@
     pickCols = [];
     order.forEach(function (it) {
       if (it.mover) { drawPiece(it.mover.x, it.mover.z, it.mover.y, it.mover.c); return; }
-      var i = it.sq, s = stacks[i], x = cellX(i), z = cellZ(i), lift = 0;
+      var i = it.sq, s = stacks[i], x = cellX(i), z = cellZ(i), fy = floorY(i), lift = 0;
+      drawSquare(i, i === sel ? 'sel' : (i === hover || i === kbd) && phase !== 'over' ? 'hover' : null);
+      if (lastMove >= 0 && i === R.mFrom(lastMove) && phase !== 'setup' && !anim) outlineSquare(i, fy, 'rgba(255,200,80,.7)', 2, true);
       if (flyers) s = s.slice(0, landedCount(i, now));
       if (anim && i === anim.from) s = s.slice(0, s.length - 1);
-      if (mover && mover.under && i === anim.to) { drawPiece(mover.x, mover.z, 0, mover.c); lift = mover.lift; }
-      for (var k = 0; k < s.length; k++) drawPiece(x, z, lift + k * PH, s[k]);
-      var topY = lift + s.length * PH;
+      if (mover && mover.under && i === anim.to) { drawPiece(mover.x, mover.z, mover.y, mover.c); lift = mover.lift; }
+      for (var k = 0; k < s.length; k++) drawPiece(x, z, fy + lift + k * TH, s[k]);
+      var topY = fy + lift + s.length * TH;
       if (s.length) {
         if (i === sel) fillTop(i, topY, 'rgba(255,255,255,.55)', '#fff');
         else if ((i === hover || i === kbd) && phase !== 'over') fillTop(i, topY, 'rgba(255,255,170,.28)', '#ffe060');
         if (lastMove >= 0 && i === R.mTo(lastMove) && phase !== 'setup' && !anim) outlineSquare(i, topY, 'rgba(255,200,80,.95)', 2.5);
       }
-      pickCols.unshift({ sq: i, h: topY });
+      pickCols.unshift({ sq: i, h: lift + s.length * TH });
     });
     // targets of the selected piece
     Object.keys(targets).forEach(function (key) {
-      var t = +key, o = targets[t], y = stacks[t].length * PH, dim = prisonMode ? !o.pri : false;
+      var t = +key, o = targets[t], n = stacks[t].length, y = floorY(t) + n * TH, dim = prisonMode ? !o.pri : false;
       if (o.pri && (o.cap || o.move)) {
-        outlineSquare(t, y, prisonMode ? COL_PRI : (o.cap ? COL_CAP : COL_MOVE), 3);
-        outlineSquare(t, y, prisonMode ? (o.cap ? COL_CAP : COL_MOVE) : COL_PRI, 1.5, false, 0.12);
+        outlineSquare(t, y, prisonMode ? COL_PRI : (o.cap ? COL_CAP : COL_MOVE), 3, !n);
+        outlineSquare(t, y, prisonMode ? (o.cap ? COL_CAP : COL_MOVE) : COL_PRI, 1.5, !n, 0.12);
       } else {
         ctx.globalAlpha = dim ? 0.45 : 1;
-        outlineSquare(t, y, o.pri ? COL_PRI : o.cap ? COL_CAP : COL_MOVE, 3);
+        outlineSquare(t, y, o.pri ? COL_PRI : o.cap ? COL_CAP : COL_MOVE, 3, !n);
         ctx.globalAlpha = 1;
       }
     });
     if (hintMove >= 0 && phase === 'play') drawArrow(R.mFrom(hintMove), R.mTo(hintMove), stacks, now);
-    if (kbd >= 0 && phase === 'play') outlineSquare(kbd, stacks[kbd].length * PH, 'rgba(255,255,255,.95)', 1.5, false, -0.05);
+    if (kbd >= 0 && phase === 'play') outlineSquare(kbd, floorY(kbd) + stacks[kbd].length * TH, 'rgba(255,255,255,.95)', 1.5, !stacks[kbd].length, -0.05);
+    if (settings.coords) drawCoords();
     drawOverlay(now);
   }
   function fillTop(i, y, fill, stroke) {
     var x = cellX(i), z = cellZ(i), P = topQuad(x - PS, x + PS, z - PS, z + PS, y);
     polyPath(P); ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke();
   }
-  function outlineSquare(i, y, color, w, board, inset) {
-    var x = cellX(i), z = cellZ(i), d = (board || !y ? 0.45 : PS + 0.03) - (inset || 0), P = topQuad(x - d, x + d, z - d, z + d, y);
+  // Outline of square i at height y: the whole square (onFloor) or the top of its stack.
+  function outlineSquare(i, y, color, w, onFloor, inset) {
+    var x = cellX(i), z = cellZ(i), d = (onFloor ? 0.45 : PS + 0.03) - (inset || 0), P = topQuad(x - d, x + d, z - d, z + d, y);
     polyPath(P); ctx.strokeStyle = color; ctx.lineWidth = w; ctx.stroke();
   }
   function drawArrow(f, t, stacks, now) {
-    var a = proj(cellX(f), stacks[f].length * PH + 0.05, cellZ(f)), b = proj(cellX(t), stacks[t].length * PH + 0.05, cellZ(t));
+    var a = proj(cellX(f), floorY(f) + stacks[f].length * TH + 0.05, cellZ(f)), b = proj(cellX(t), floorY(t) + stacks[t].length * TH + 0.05, cellZ(t));
     var pulse = reduceMotion ? 1 : 0.75 + 0.25 * Math.sin(now / 180);
     var ang = Math.atan2(b.y - a.y, b.x - a.x), L = Math.hypot(b.x - a.x, b.y - a.y);
     ctx.save();
@@ -280,27 +323,33 @@
     ctx.fill(); ctx.stroke();
     ctx.restore();
   }
+  // Coordinates on the visible sides of the base (letters front/back, numbers left/right),
+  // or just outside the board when the side cannot be seen (view from above).
   function drawCoords() {
-    ctx.font = 'bold 13px system-ui, sans-serif'; ctx.textBaseline = 'middle';
-    var zs = eye[2] >= 0 ? 1 : -1, xs = eye[0] >= 0 ? 1 : -1, D = 3.5;
+    ctx.font = 'bold ' + (canvas.clientWidth && canvas.clientWidth < 500 ? 19 : 13) + 'px system-ui, sans-serif'; ctx.textBaseline = 'middle';
+    var zs = eye[2] >= 0 ? 1 : -1, xs = eye[0] >= 0 ? 1 : -1;
+    var zFace = faceVisible(0, 0, zs * 3, 0, zs) && Math.abs(proj(0, -BASE_H, zs * 3).y - proj(0, 0, zs * 3).y) > 14;
+    var xFace = faceVisible(xs * 3, 0, 0, xs, 0) && Math.abs(proj(xs * 3, -BASE_H, 0).y - proj(xs * 3, 0, 0).y) > 14;
     for (var k = 0; k < N; k++) {
-      var p = proj(k - 2.5, 0, zs * D);
+      var p = zFace ? proj(k - 2.5, -BASE_H / 2, zs * 3.001) : proj(k - 2.5, 0, zs * 3.35);
       shadowText('ABCDEF'.charAt(k), p.x, p.y, '#f3e2c4', 'center');
-      var q = proj(xs * D, 0, k - 2.5);
+      var q = xFace ? proj(xs * 3.001, -BASE_H / 2, k - 2.5) : proj(xs * 3.35, 0, k - 2.5);
       shadowText(String(N - k), q.x, q.y, '#f3e2c4', 'center');
     }
     ctx.textBaseline = 'alphabetic';
   }
-  function sprite(r, x, y) { if (sheet) ctx.drawImage(sheet, r[0], r[1], r[2], r[3], Math.round(x), Math.round(y), r[2], r[3]); }
+  // Text sprite of 39.png, placed where the original draws it in its 640x400 picture
+  // (moved with the centre of the canvas).
+  function sprite(r) { if (sheet) ctx.drawImage(sheet, r[0], r[1], r[2], r[3], Math.round(r[4] - 320 + W / 2), Math.round(r[5] - 200 + H / 2), r[2], r[3]); }
 
   function drawOverlay(now) {
-    if (sheet) ctx.drawImage(sheet, 900, 160, 300, 80, 6, 4, 150, 40);
     if (phase === 'setup') {
       ctx.font = 'bold 14px system-ui, sans-serif';
       shadowText('Nouvelle position : ' + setupCount + ' / 16 pièces', W - 10, H - 12, '#fff', 'right');
+      if (!banner && anyIncomplete()) { sprite(SPR.incomplete1); sprite(SPR.incomplete2); }
     }
-    if (pos.side === human && phase === 'play' && !banner && plays.length < 2 && !overlayShown()) sprite(SPR.yourTurn, (W - SPR.yourTurn[2]) / 2, 10);
-    if (phase === 'over') sprite(SPR.over, (W - SPR.over[2]) / 2, 8);
+    if (showYourTurn && phase === 'play' && pos.side === human && !overlayShown()) sprite(SPR.yourTurn);
+    if (phase === 'over' && !overlayShown()) sprite(SPR.over);
     if (phase === 'think') {
       ctx.font = 'bold 14px system-ui, sans-serif';
       var dots = '...'.slice(0, 1 + ((now / 350) | 0) % 3);
@@ -308,17 +357,14 @@
     }
     if (banner) {
       if (now > banner.until) { banner = null; if (bannerDone) { var f = bannerDone; bannerDone = null; f(); } }
-      else {
-        var r0 = banner.spr[0], bx = (W - r0[2]) / 2;
-        banner.spr.forEach(function (r, k) { sprite(r, bx + r[0] - r0[0] + (k ? 30 : 0), 8 + r[1] - r0[1] + k * 3); });
-      }
+      else banner.spr.forEach(sprite);
     }
     if (floatText) {
       if (now > floatText.until) floatText = null;
       else {
         var a = Math.min(1, (floatText.until - now) / 300);
         ctx.globalAlpha = a; ctx.font = 'bold 26px "Times New Roman", serif';
-        shadowText(floatText.text, W / 2, 80, '#ff5030', 'center'); ctx.globalAlpha = 1;
+        shadowText(floatText.text, W / 2, 34, '#ff5030', 'center'); ctx.globalAlpha = 1;
       }
     }
   }
@@ -328,22 +374,24 @@
 
   // ---------- Animations ----------
 
+  // The moving piece: a hop to the target stack, or (prisoner) a slide under the
+  // target stack, which rises a little to let it in. Heights include the terraces.
   function animState(now) {
     var t = Math.min(1, (now - anim.t0) / anim.dur), a = anim;
     var x0 = cellX(a.from), z0 = cellZ(a.from), x1 = cellX(a.to), z1 = cellZ(a.to);
-    var y0 = (a.hFrom - 1) * PH;
+    var y0 = floorY(a.from) + (a.hFrom - 1) * TH, yT = floorY(a.to);
     if (a.kind !== R.PRISON) {
-      var y1 = a.hTo * PH, e = t * t * (3 - 2 * t);
+      var y1 = yT + a.hTo * TH, e = t * t * (3 - 2 * t);
       var hop = 0.7 + Math.max(0, y1 - y0) * 0.5;
       return { x: x0 + (x1 - x0) * e, z: z0 + (z1 - z0) * e, y: y0 + (y1 - y0) * e + Math.sin(Math.PI * t) * hop, c: a.c };
     }
     var dx = x1 - x0, dz = z1 - z0, dl = Math.hypot(dx, dz), sx = x1 - dx / dl * 0.62, sz = z1 - dz / dl * 0.62;
     if (t < 0.55) {
       var u = t / 0.55, eu = u * u * (3 - 2 * u);
-      return { x: x0 + (sx - x0) * eu, z: z0 + (sz - z0) * eu, y: y0 * (1 - eu) + Math.sin(Math.PI * u) * 0.5, c: a.c };
+      return { x: x0 + (sx - x0) * eu, z: z0 + (sz - z0) * eu, y: y0 + (yT - y0) * eu + Math.sin(Math.PI * u) * 0.5, c: a.c };
     }
     var v = (t - 0.55) / 0.45;
-    return { x: sx + (x1 - sx) * v, z: sz + (z1 - sz) * v, y: 0, c: a.c, under: true, lift: Math.min(1, v * 2.5) * PH };
+    return { x: sx + (x1 - sx) * v, z: sz + (z1 - sz) * v, y: yT, c: a.c, under: true, lift: Math.min(1, v * 2.5) * TH };
   }
   function startFly(p, then) {
     flyers = []; var k = 0, t0 = performance.now() + 150, step = 110 * speedK(), dur = 650 * Math.min(1, speedK());
@@ -361,7 +409,7 @@
     var t = (now - f.t0) / f.dur;
     if (t < 0 || t >= 1) return null;
     var e = 1 - (1 - t) * (1 - t);
-    return { x: cellX(f.sq) + f.ox * (1 - e), z: cellZ(f.sq) + f.oz * (1 - e), y: f.level * PH + 7 * (1 - e), c: f.c };
+    return { x: cellX(f.sq) + f.ox * (1 - e), z: cellZ(f.sq) + f.oz * (1 - e), y: floorY(f.sq) + f.level * TH + 7 * (1 - e), c: f.c };
   }
   function landedCount(i, now) { var n = 0; flyers.forEach(function (f) { if (f.sq === i && now >= f.t0 + f.dur) n++; }); return n; }
   function updateFlyers(now) {
@@ -386,10 +434,11 @@
     cancelAI();
     hideOverlay(); hideChoice();
     human = settings.starter === 'human' ? 0 : 1;
-    pos = p || R.initial(); pos.setSide(0);
+    // the player's pieces are always in front (rows 4-5); whoever starts has white
+    pos = p || R.initial(human); pos.setSide(0);
     sel = -1; anim = null; banner = null; floatText = null; lastMove = -1; hintMove = -1; setupStacks = null; result = ''; overInfo = null;
-    snapshots = []; plays = []; repCount = {}; hintsUsed = 0; undosUsed = 0;
-    repCount[pos.key()] = 1;
+    snapshots = []; plays = []; hintsUsed = 0; undosUsed = 0;
+    showYourTurn = !!p && human === 0;
     gameStart = Date.now();
     setPrisonMode(false);
     $('setupCard').hidden = true; $('playCard').hidden = false;
@@ -405,17 +454,15 @@
   function nextTurn() {
     hintMove = -1;
     updatePanel();
-    if (!legalCount()) {
+    if (!legalCount()) { // no draw in Agora: the side that cannot move has lost
       var winner = 1 - pos.side;
       endGame(winner === human ? 'win' : 'loss', (winner === human ? "L'ordinateur" : 'Tu') + ' ne peu' + (winner === human ? 't' : 'x') + ' plus jouer.');
       return;
     }
-    if ((repCount[pos.key()] || 0) >= 3) { endGame('draw', 'La même position est revenue trois fois.'); return; }
-    if (plays.length >= R.MAX_PLIES) { endGame('draw', '400 coups ont été joués.'); return; }
     if (pos.side === human) {
       phase = 'play';
       setStatus('A toi de jouer (' + sideName(human) + ')');
-      if (!settings.info || !lastInfo) subEl.textContent = plays.length ? 'Dernier coup : ' + plays[plays.length - 1].name : 'Choisis une de tes pièces.';
+      if (!settings.info || !lastInfo) subEl.textContent = plays.length ? 'Dernier coup : ' + plays[plays.length - 1].name : 'Choisis une de tes pièces (elles sont devant toi).';
     } else {
       phase = 'think';
       setStatus('<span class="spin" aria-hidden="true"></span>L\'ordinateur réfléchit<span class="dots"></span>', '', true);
@@ -431,21 +478,27 @@
     updatePanel(); updateButtons();
   }
 
+  // kind: 'win' or 'loss' (there is no draw). Messages of the original: "Tu as gagné!" / "Bravo",
+  // "Tu as perdu..." / "Dommage", then PARTIE TERMINEE on the board.
   function endGame(kind, reason) {
     cancelAI();
-    phase = 'over'; sel = -1; hintMove = -1;
-    var title = kind === 'win' ? 'Bravo, tu as gagné !' : kind === 'loss' ? "L'ordinateur a gagné !" : 'Partie nulle';
+    phase = 'over'; sel = -1; hintMove = -1; showYourTurn = false;
+    var title = kind === 'win' ? 'Tu as gagné!' : 'Tu as perdu...', word = kind === 'win' ? 'Bravo' : 'Dommage';
     result = title;
-    setStatus(title, kind === 'win' ? 'good' : kind === 'loss' ? 'bad' : '');
+    setStatus(title + ' ' + word, kind === 'win' ? 'good' : 'bad');
     subEl.textContent = reason;
-    if (kind === 'win') Lehcim.play('win'); else if (kind === 'loss') Lehcim.play('lose');
-    var lv = settings.level;
-    if (!record[lv]) record[lv] = [0, 0, 0];
-    record[lv][kind === 'win' ? 0 : kind === 'draw' ? 1 : 2]++;
-    saveRecord();
-    overInfo = { kind: kind, title: title, reason: reason, duration: Date.now() - gameStart, level: lv };
+    if (kind === 'win') Lehcim.play('win'); else Lehcim.play('lose');
+    addRecord(kind);
+    overInfo = { kind: kind, title: title, word: word, reason: reason, duration: Date.now() - gameStart, level: settings.level };
     updatePanel(); updateButtons();
     setTimeout(function () { if (phase === 'over' && overInfo) showSummary(); }, reduceMotion ? 200 : 1300);
+  }
+
+  function addRecord(kind) {
+    var lv = settings.level;
+    if (!record[lv]) record[lv] = [0, 0, 0];
+    record[lv][kind === 'win' ? 0 : 2]++;
+    saveRecord();
   }
 
   function doMove(m) {
@@ -456,6 +509,7 @@
     anim = { from: f, to: t, kind: R.mKind(m), c: pos.col[f], hFrom: pos.height(f), hTo: pos.height(t), t0: performance.now(),
       dur: (R.mKind(m) === R.PRISON ? 750 : 520) * speedK(), move: m };
     sel = -1; dragging = false; hintMove = -1;
+    if (anim.c === human) showYourTurn = false;
     phase = 'anim';
     updateButtons();
     Lehcim.play('pick', 0.5);
@@ -468,12 +522,10 @@
     var name = R.moveName(m) + (info.revolt ? ' !' : '');
     plays.push({ m: m, side: side, name: name, revolt: !!info.revolt, lost: !!info.lost, capture: kind === R.CAPTURE });
     lastMove = m;
-    var key = pos.key(); repCount[key] = (repCount[key] || 0) + 1;
     if (kind === R.CAPTURE) Lehcim.play('capture'); else if (kind === R.PRISON) Lehcim.play('prison'); else Lehcim.play('drop');
     if (info.revolt) { floatText = { text: "C'est la révolution !", until: performance.now() + 1600 }; Lehcim.play('revolt'); }
     else if (info.lost) { floatText = { text: 'Les prisonniers reprennent la pile !', until: performance.now() + 1600 }; Lehcim.play('revolt'); }
     if (side !== human && settings.info && lastInfo) showInfo(lastInfo, true);
-    if ((repCount[key] || 0) === 2 && side !== human) toast('Attention : cette position est déjà apparue. Une troisième fois et la partie est nulle.');
     nextTurn();
   }
 
@@ -487,7 +539,6 @@
     var undone = 0;
     while (snapshots.length) {
       var p = snapshots.pop(), pl = plays.pop();
-      var key = pos.key(); repCount[key]--; if (!repCount[key]) delete repCount[key];
       pos = p; undone++;
       if (pl.side === human) break;
     }
@@ -530,14 +581,9 @@
     worker = null; workerOK = 'broken';
     if (pending) { var p = pending; pending = null; runMain(p); }
   }
-  function historyKeys() {
-    var h = snapshots.map(function (p) { return [p.h1, p.h2]; });
-    h.push([pos.h1, pos.h2]);
-    return h;
-  }
   // purpose: level 1..3 for the computer's move, or 'hint'.
   function askAI(p, level, cb) {
-    var opts = { level: level === 'hint' ? 3 : level, history: historyKeys(), plies: plays.length };
+    var opts = { level: level === 'hint' ? 3 : level };
     if (level === 'hint') { opts.timeMs = 900; opts.random = 0; }
     var req = { id: ++reqId, cb: cb, stacks: stacksOf(p), side: p.side, opts: opts };
     pending = req;
@@ -597,13 +643,15 @@
     var r = canvas.getBoundingClientRect();
     return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
   }
+  // Square under the point: columns from the nearest, each tested on its floor
+  // square (at its terrace level), then on the hull of its stack.
   function pick(px, py) {
     for (var k = 0; k < pickCols.length; k++) {
-      var c = pickCols[k], x = cellX(c.sq), z = cellZ(c.sq);
-      if (inPoly(px, py, topQuad(x - 0.5, x + 0.5, z - 0.5, z + 0.5, 0))) return c.sq;
+      var c = pickCols[k], x = cellX(c.sq), z = cellZ(c.sq), fy = floorY(c.sq);
+      if (inPoly(px, py, topQuad(x - 0.5, x + 0.5, z - 0.5, z + 0.5, fy))) return c.sq;
       if (c.h > 0) {
         var pts = [];
-        [0, c.h].forEach(function (y) { topQuad(x - PS, x + PS, z - PS, z + PS, y).forEach(function (p) { pts.push(p); }); });
+        [fy, fy + c.h].forEach(function (y) { topQuad(x - PS, x + PS, z - PS, z + PS, y).forEach(function (p) { pts.push(p); }); });
         if (inPoly(px, py, hull(pts))) return c.sq;
       }
     }
@@ -652,7 +700,7 @@
     choiceEl.style.top = Math.max(60, y) + 'px';
     choiceEl.hidden = false;
     $('chCap').focus({ preventScroll: true });
-    if (!ambiguousTold) { ambiguousTold = true; toast('Piles de même hauteur : tu peux prendre ou te constituer prisonnier.'); }
+    if (!ambiguousTold) { ambiguousTold = true; toast('Sommets à la même hauteur (gradins compris) : tu peux prendre ou te constituer prisonnier.'); }
   }
   function hideChoice() { choiceEl.hidden = true; choiceMoves = null; }
   $('chCap').addEventListener('click', function () { if (choiceMoves && phase === 'play') { var m = choiceMoves[0]; hideChoice(); doMove(m); } });
@@ -696,7 +744,7 @@
       var dx = e.clientX - camDrag.x, dy = e.clientY - camDrag.y;
       if (Math.abs(dx) + Math.abs(dy) > 4) camDrag.moved = true;
       cam.yawT = camDrag.yaw - dx * 0.008;
-      cam.pitchT = Math.max(18 * DEG, Math.min(89 * DEG, camDrag.pitch + dy * 0.006));
+      cam.pitchT = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camDrag.pitch + dy * 0.006));
       cam.yaw = cam.yawT; cam.pitch = cam.pitchT;
       stage.classList.add('grab');
       return;
@@ -717,21 +765,22 @@
   canvas.addEventListener('wheel', function (e) {
     if (phase === 'intro') return;
     e.preventDefault();
-    cam.pitchT = Math.max(18 * DEG, Math.min(89 * DEG, cam.pitchT - Math.sign(e.deltaY) * 4 * DEG));
+    cam.pitchT = Math.max(PITCH_MIN, Math.min(PITCH_MAX, cam.pitchT - Math.sign(e.deltaY) * 4 * DEG));
   }, { passive: false });
 
+  // dy < 0: the camera moves to the left (as the left arrow of the original); dp > 0: lean over.
   function rotate(dy, dp) {
     cam.yawT += dy * 15 * DEG;
-    cam.pitchT = Math.max(18 * DEG, Math.min(89 * DEG, cam.pitchT + dp * 6 * DEG));
+    cam.pitchT = Math.max(PITCH_MIN, Math.min(PITCH_MAX, cam.pitchT + dp * 6 * DEG));
   }
   // Presets: the nearest equivalent yaw, so the camera turns the short way.
   function view(yaw, pitch) {
     var d = yaw - cam.yawT; d = Math.atan2(Math.sin(d), Math.cos(d));
     cam.yawT += d; cam.pitchT = pitch;
   }
-  var VIEWS = { vFront: [VIEW0.yaw, VIEW0.pitch], vTop: [0, 89 * DEG], vSide: [-90 * DEG, 38 * DEG], vOpp: [155 * DEG, 48 * DEG] };
+  var VIEWS = { vFront: [VIEW0.yaw, VIEW0.pitch], vTop: [0, PITCH_MAX], vSide: [-90 * DEG, 38 * DEG], vOpp: [Math.PI, VIEW0.pitch] };
   Object.keys(VIEWS).forEach(function (id) { $(id).addEventListener('click', function () { view(VIEWS[id][0], VIEWS[id][1]); }); });
-  [['rotL', 1, 0], ['rotR', -1, 0], ['tiltU', 0, 1], ['tiltD', 0, -1]].forEach(function (b) {
+  [['rotL', -1, 0], ['rotR', 1, 0], ['tiltU', 0, 1], ['tiltD', 0, -1]].forEach(function (b) {
     $(b[0]).addEventListener('click', function () { rotate(b[1], b[2]); });
   });
 
@@ -756,7 +805,7 @@
     var onButton = tag === 'BUTTON' || tag === 'INPUT' || tag === 'SELECT' || tag === 'A';
     if (k.indexOf('Arrow') === 0) {
       if (e.shiftKey) {
-        if (k === 'ArrowLeft') rotate(1, 0); else if (k === 'ArrowRight') rotate(-1, 0);
+        if (k === 'ArrowLeft') rotate(-1, 0); else if (k === 'ArrowRight') rotate(1, 0);
         else if (k === 'ArrowUp') rotate(0, 1); else rotate(0, -1);
       } else {
         if (phase === 'intro' || phase === 'start') return;
@@ -806,16 +855,26 @@
       if (i === 0 && (phase === 'play' || phase === 'think' || phase === 'anim')) { anim = null; endGame('loss', 'Tu as abandonné.'); }
     });
   });
+  // As in the original, a game in progress must be given up first ("Partie en cours",
+  // "Abandonne d'abord"); here the player can do it from the same box (counted as a loss).
+  function inGame() { return (phase === 'play' || phase === 'think' || phase === 'anim') && plays.length > 0; }
+  function afterResign(fn) {
+    if (!inGame()) { fn(); return; }
+    Lehcim.message("Partie en cours : abandonne d'abord.", ['Abandonner', 'Continuer']).then(function (i) {
+      if (i !== 0 || !inGame()) return;
+      cancelAI(); anim = null; addRecord('loss'); fn();
+    });
+  }
   function startNew() {
     if (phase === 'loading') return;
     if (phase === 'intro') introDone = true;
-    newGame();
+    afterResign(function () { newGame(); });
   }
   $('new').addEventListener('click', startNew);
 
   // ---------- Nouvelle position ----------
 
-  $('setup').addEventListener('click', function () { if (phase === 'intro') introDone = true; startSetup(); });
+  $('setup').addEventListener('click', function () { if (phase === 'intro') introDone = true; afterResign(startSetup); });
   $('setupCancel').addEventListener('click', function () { newGame(); });
   function setSetupColor(c) {
     setupColor = c;
@@ -827,48 +886,46 @@
     cancelAI(); hideOverlay(); hideChoice();
     human = settings.starter === 'human' ? 0 : 1;
     setupStacks = []; for (var i = 0; i < N * N; i++) setupStacks.push([]);
-    setupCount = 0; setupOpen = -1; sel = -1; anim = null; flyers = null; lastMove = -1; banner = null; floatText = null; result = '';
+    setupCount = 0; sel = -1; showYourTurn = false; anim = null; flyers = null; lastMove = -1; banner = null; floatText = null; result = '';
     snapshots = []; plays = [];
     phase = 'setup';
     $('setupCard').hidden = false; $('playCard').hidden = true;
     setStatus('Pose les 16 pièces');
-    subEl.textContent = 'Celui qui commence a les blancs (' + (human === 0 ? 'toi' : "l'ordinateur") + ').';
+    subEl.textContent = 'Celui qui commence a les blancs (' + (human === 0 ? 'toi' : "l'ordinateur") + '). Une pile a au plus deux couches.';
     updatePanel(); updateButtons();
   }
+  // Segments of a stack (bottom -> top): 'ok', 'incomplete' (prisoners in majority) or 'bad' (3 layers).
   function stackState(s) {
     if (!s.length) return 'ok';
-    if (!R.Pos.fromStacks([s])) {
-      var c = s[s.length - 1], k = s.length - 1;
-      while (k >= 0 && s[k] === c) k--;
-      for (var j = k; j >= 0; j--) if (s[j] === c) return 'bad';
-      return 'incomplete';
-    }
-    return 'ok';
+    var c = s[s.length - 1], k = s.length - 1, t = 0;
+    while (k >= 0 && s[k] === c) { t++; k--; }
+    var b = k + 1;
+    for (; k >= 0; k--) if (s[k] === c) return 'bad';
+    return b > t ? 'incomplete' : 'ok';
   }
+  function anyIncomplete() { return !!setupStacks && setupStacks.some(function (s) { return stackState(s) === 'incomplete'; }); }
+  // Rules of the original: a piece that would make a third layer is refused without a word;
+  // "UNE PILE EST INCOMPLETE. TERMINE LA !" stays shown while a stack has its prisoners
+  // in majority (other squares can still be filled); with the 16th piece, an incomplete
+  // stack gives "POSITION IMPOSSIBLE ! RECOMMENCE ..." and the board is emptied.
   function setupClick(sq, c) {
     if (sq < 0 || banner) return;
-    if (setupOpen >= 0 && sq !== setupOpen) {
-      banner = { spr: [SPR.incomplete1, SPR.incomplete2], until: performance.now() + 1800 };
-      toast('Une pile est incomplète : termine-la (en ' + R.sqName(setupOpen) + ').');
-      Lehcim.play('bad', 0.5); return;
-    }
-    setupStacks[sq].push(c); setupCount++;
+    var s = setupStacks[sq].concat([c]);
+    if (stackState(s) === 'bad') return;
+    setupStacks[sq] = s; setupCount++;
     Lehcim.play('drop', 0.5);
-    var st = stackState(setupStacks[sq]);
-    setupOpen = st === 'incomplete' ? sq : -1;
     updatePanel();
-    if (st === 'bad' || (setupCount >= 16 && st !== 'ok')) { impossible(); return; }
-    if (setupCount >= 16) {
-      var p = R.Pos.fromStacks(setupStacks, 0);
-      if (!p) { impossible(); return; }
-      newGame(p);
+    var inc = anyIncomplete();
+    subEl.textContent = inc ? 'Une pile est incomplète : termine-la !' : 'Celui qui commence a les blancs (' + (human === 0 ? 'toi' : "l'ordinateur") + ').';
+    if (setupCount < 16) return;
+    if (inc) {
+      banner = { spr: [SPR.impossible1, SPR.impossible2], until: performance.now() + 1100 };
+      setStatus('Position impossible : recommence...');
+      Lehcim.play('bad', 0.6);
+      bannerDone = startSetup;
+      return;
     }
-  }
-  function impossible() {
-    banner = { spr: [SPR.impossible1, SPR.impossible2], until: performance.now() + 2000 };
-    toast('Position impossible : recommence.');
-    Lehcim.play('bad', 0.6);
-    bannerDone = startSetup;
+    newGame(R.Pos.fromStacks(setupStacks, 0));
   }
 
   // ---------- Side panel, overlay, toasts ----------
@@ -913,8 +970,8 @@
     [1, 2, 3].forEach(function (lv) {
       var r = record[lv] || [0, 0, 0];
       var dt = document.createElement('dt'); dt.textContent = 'Niveau ' + lv + (lv === settings.level ? ' (actuel)' : '');
-      var dd = document.createElement('dd'); dd.textContent = r[0] + ' V - ' + r[1] + ' N - ' + r[2] + ' D';
-      dd.title = r[0] + ' victoires, ' + r[1] + ' nulles, ' + r[2] + ' défaites';
+      var dd = document.createElement('dd'); dd.textContent = r[0] + ' V - ' + r[2] + ' D' + (r[1] ? ' (' + r[1] + ' N)' : '');
+      dd.title = r[0] + ' victoires, ' + r[2] + ' défaites' + (r[1] ? ', ' + r[1] + ' nulles (anciennes versions)' : '');
       rec.appendChild(dt); rec.appendChild(dd);
     });
   }
@@ -933,8 +990,9 @@
     phase = 'start';
     var lvNames = { 1: 'Débutant', 2: 'Moyen', 3: 'Fort' };
     showOverlay('<h2>Agora</h2><p>Déplace tes pions, prends les piles adverses ou glisse-toi dessous comme prisonnier. ' +
+      'Le plateau est en gradins : la hauteur d\'une pile compte depuis le bas du plateau. ' +
       'Gagne en privant l\'ordinateur de tout coup jouable.</p>' +
-      '<p class="big">Niveau ' + settings.level + ' (' + lvNames[settings.level] + '), ' + (settings.starter === 'human' ? 'tu commences avec les blancs' : "l'ordinateur commence, tu as les noirs") + '.</p>' +
+      '<p class="big">Niveau ' + settings.level + ' (' + lvNames[settings.level] + '), ' + (settings.starter === 'human' ? 'tu commences avec les blancs' : "l'ordinateur commence, tu as les noirs") + ', tes pions sont devant toi.</p>' +
       '<div class="btnrow"><button class="btn primary" id="ovPlay">Jouer</button><button class="btn" id="ovSet">Réglages</button><button class="btn" id="ovHelp">Règles</button></div>');
     $('ovPlay').onclick = function () { newGame(); };
     $('ovSet').onclick = openSettings;
@@ -949,7 +1007,7 @@
     var cap = function (p) { return p.capture; }, rev = function (p) { return p.revolt; };
     var mins = Math.floor(o.duration / 60000), secs = Math.round(o.duration / 1000) % 60;
     var c = R.counts(pos);
-    showOverlay('<h2>' + o.title + '</h2><p>' + o.reason + '</p>' +
+    showOverlay('<h2>' + o.title + '</h2><p><b>' + o.word + '</b>. ' + o.reason + '</p>' +
       '<dl class="stats">' +
       '<dt>Coups joués</dt><dd>' + plays.length + '</dd>' +
       '<dt>Tes prises / celles de l\'ordinateur</dt><dd>' + cnt(mine, cap) + ' / ' + cnt(his, cap) + '</dd>' +
@@ -1058,7 +1116,7 @@
   window.AgoraGame = {
     state: function () { return { phase: phase, side: pos.side, human: human, sel: sel, plies: plays.length, result: result, key: pos.key(), setupCount: setupCount, ai: aiMode(), workerOK: workerOK, hint: hintMove, last: lastInfo }; },
     pos: function () { return pos; },
-    topOf: function (sq) { setupCamera(); var p = proj(cellX(sq), pos.height(sq) * PH, cellZ(sq)); var r = canvas.getBoundingClientRect(); return { x: r.left + p.x * r.width / W, y: r.top + p.y * r.height / H }; },
+    topOf: function (sq) { setupCamera(); var p = proj(cellX(sq), floorY(sq) + (setupStacks ? setupStacks[sq].length : pos.height(sq)) * TH, cellZ(sq)); var r = canvas.getBoundingClientRect(); return { x: r.left + p.x * r.width / W, y: r.top + p.y * r.height / H }; },
     moves: function () { return R.moves(pos).map(function (m) { return [R.mFrom(m), R.mTo(m), R.mKind(m), R.moveName(m)]; }); },
     play: function (m) { if (phase === 'play') doMove(m); },
     skipIntro: function () { endIntro(); }

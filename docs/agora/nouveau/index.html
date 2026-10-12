@@ -94,7 +94,7 @@
 
     <section class="card" id="setupCard" hidden>
       <h2>Nouvelle position</h2>
-      <p class="sub" style="margin:0 0 8px">Pose les 16 pièces : touche une case pour y ajouter une pièce (clic droit : pièce noire).</p>
+      <p class="sub" style="margin:0 0 8px">Pose les 16 pièces : touche une case pour y ajouter une pièce (clic droit : pièce noire). Une pile a au plus deux couches.</p>
       <div class="seg full" role="group" aria-label="Couleur de la pièce à poser">
         <button id="setW" aria-pressed="true">Pièce blanche</button>
         <button id="setB" aria-pressed="false">Pièce noire</button>
@@ -113,8 +113,8 @@
     <section class="card">
       <h2>Vue</h2>
       <div class="view-grid">
-        <button class="btn" id="rotL" title="Tourner à gauche (Maj + ←)" aria-label="Tourner à gauche">⟲</button>
-        <button class="btn" id="rotR" title="Tourner à droite (Maj + →)" aria-label="Tourner à droite">⟳</button>
+        <button class="btn" id="rotL" title="La caméra passe à gauche (Maj + ←)" aria-label="Tourner vers la gauche">⟲</button>
+        <button class="btn" id="rotR" title="La caméra passe à droite (Maj + →)" aria-label="Tourner vers la droite">⟳</button>
         <button class="btn" id="tiltU" title="Se pencher (Maj + ↑)" aria-label="Se pencher par-dessus">▲</button>
         <button class="btn" id="tiltD" title="Se redresser (Maj + ↓)" aria-label="Se redresser">▼</button>
       </div>
@@ -151,16 +151,21 @@
     <h3>But du jeu</h3>
     <p>Un joueur gagne quand son adversaire ne peut plus jouer, c'est-à-dire quand ce dernier n'a plus de pion ou que ses pions sont tous prisonniers.</p>
     <h3>Déroulement de la partie</h3>
+    <p>Au départ, chaque camp a 8 pions : toute sa rangée du fond et les deux cases devant ses coins. Tes pions sont toujours devant toi ; celui qui commence a les blancs.</p>
     <p>Les blancs commencent. Chaque joueur à tour de rôle doit mouvoir un de ses pions. Dans une pile, seul le pion supérieur peut bouger. Tous les déplacements se font d'une case sur une case adjacente (8 directions).</p>
+    <h3>Le plateau en gradins</h3>
+    <p>La bordure est la plus haute ; l'anneau intermédiaire est 3 épaisseurs de pion plus bas, et le carré central 2 épaisseurs plus bas encore. La <b>hauteur</b> d'une pile, pour la prise et le prisonnier, est celle de son sommet : niveau de la case (bordure 5, anneau 2, centre 0 épaisseurs) plus nombre de pions. Ainsi un pion seul sur la bordure peut prendre une pile de 2 pions dans l'anneau, et il faut 4 pions dans l'anneau pour prendre un pion seul sur la bordure.</p>
     <p><b>Le déplacement simple :</b> le pion est déplacé sur une case vide adjacente.</p>
-    <p><b>La prise :</b> ta pile est plus haute ou de même hauteur que la pile adverse. Ton pion se pose dessus et toutes les pièces adverses sont retournées. La prise n'est jamais obligatoire.</p>
-    <p><b>Le prisonnier :</b> ta pile est plus basse ou de même hauteur. Ton pion se glisse, sans être retourné, sous les pièces adverses.</p>
+    <p><b>La prise :</b> le sommet de ta pile est plus haut ou à la même hauteur que celui de la pile adverse. Ton pion se pose dessus et toutes les pièces adverses sont retournées. La prise n'est jamais obligatoire.</p>
+    <p><b>Le prisonnier :</b> le sommet de ta pile est plus bas ou à la même hauteur. Ton pion se glisse, sans être retourné, sous les pièces adverses.</p>
     <p>Si tes prisonniers deviennent majoritaires dans une pile, les pièces adverses sont retournées : <b>c'est la révolution !</b> Attention, si tu quittes une pile, tes prisonniers peuvent devenir majoritaires et ce sont alors tes pions qui sont retournés.</p>
     <h3>Mouvements interdits</h3>
-    <p>Il est interdit de s'empiler sur ses propres pions, sauf pour un <b>pion isolé</b> (qui ne touche qu'un seul pion de sa couleur) : il peut s'empiler sur le pion qu'il touche. Un prisonnier ne peut ni bouger ni être pris par les pièces qui le contrôlent.</p>
-    <p>La partie est nulle si la même position revient trois fois ou après 400 coups.</p>
+    <p>Il est interdit de s'empiler sur ses propres pions, sauf pour un <b>pion isolé</b> (qui ne touche qu'un seul pion de sa couleur) : il peut s'empiler sur le pion qu'il touche. Pour savoir si un pion est isolé, on compte tous les pions de sa couleur sur les 8 cases voisines, y compris ceux qui sont prisonniers dans une pile. Un prisonnier ne peut ni bouger ni être pris par les pièces qui le contrôlent.</p>
+    <p>Il n'y a pas de partie nulle : si plus personne n'avance, abandonne ou lance une nouvelle partie.</p>
+    <h3>Nouvelle position</h3>
+    <p>Choisis d'abord qui commence (Réglages), puis pose les 16 pièces : clic gauche (ou « Pièce blanche ») une pièce blanche, clic droit (ou « Pièce noire ») une pièce noire, sur la pile de la case. Une pile a au plus deux couches. Tant qu'une pile a ses prisonniers majoritaires, « Une pile est incomplète » s'affiche ; si c'est encore le cas à la 16e pièce, la position est impossible et tout est à recommencer.</p>
     <h3>Comment jouer</h3>
-    <p>Touche (ou clique) une de tes pièces : les cases possibles s'allument en <b style="color:#2f9f3f">vert</b> (déplacement), <b style="color:#e8602a">orange</b> (prise) ou <b style="color:#3d8ee8">bleu</b> (prisonnier). Touche ensuite la case visée, ou fais glisser la pièce. Contre une pile de même hauteur, les deux coups sont possibles : choisis « Prendre » ou « Prisonnier » dans la bulle, ou active le mode <b>Prisonnier</b> (clic droit, ou touche <kbd>P</kbd>).</p>
+    <p>Touche (ou clique) une de tes pièces : les cases possibles s'allument en <b style="color:#2f9f3f">vert</b> (déplacement), <b style="color:#e8602a">orange</b> (prise) ou <b style="color:#3d8ee8">bleu</b> (prisonnier). Touche ensuite la case visée, ou fais glisser la pièce. Quand les deux sommets sont à la même hauteur (gradin compris), les deux coups sont possibles : choisis « Prendre » ou « Prisonnier » dans la bulle, ou active le mode <b>Prisonnier</b> (clic droit, ou touche <kbd>P</kbd>).</p>
     <p><b>Notation :</b> colonnes A à F, rangées 1 à 6 (affichées sur le plateau). <code>B1-C2</code> déplacement, <code>B1+C2</code> empilement d'un pion isolé, <code>B1xC2</code> prise, <code>B1vC2</code> prisonnier, « ! » révolution.</p>
     <h3>Clavier</h3>
     <div class="keys">
