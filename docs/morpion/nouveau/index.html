@@ -18,8 +18,9 @@
   .score .p { display: flex; align-items: center; gap: 10px; }
   .score .p .who { flex: 1; }
   .score .p .dot { width: 22px; height: 22px; border-radius: 50%; flex: none; box-shadow: inset -3px -3px 5px rgba(0, 0, 0, .35), inset 2px 2px 4px rgba(255, 255, 255, .5); }
-  .score .p .dot.p1 { background: radial-gradient(circle at 35% 35%, #ffd27a, #e0860f 60%, #8a4a05); }
-  .score .p .dot.p2 { background: radial-gradient(circle at 35% 35%, #e9e9e9, #8b8b8b 60%, #3f3f3f); }
+  /* as in the original: the player is grey, the computer orange */
+  .score .p .dot.p1 { background: radial-gradient(circle at 35% 35%, #e9e9e9, #8b8b8b 60%, #3f3f3f); }
+  .score .p .dot.p2 { background: radial-gradient(circle at 35% 35%, #ffd27a, #e0860f 60%, #8a4a05); }
   .tools { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
   .tools .btn { padding: 0 8px; }
   .tools .btn kbd { font-size: 11px; }
@@ -37,6 +38,7 @@
   .overlay .btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   .overlay .sum { display: grid; grid-template-columns: auto auto; gap: 2px 16px; text-align: left; font-size: 15px; color: #e8e4dc; }
   .overlay .sum b { color: #fff; font-variant-numeric: tabular-nums; }
+  .overlay .sub-title { margin: -6px 0 0; font-size: 18px; font-weight: 600; color: #fff; }
   .overlay .big { font-size: clamp(30px, 6vw, 44px); font-weight: 800; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
   .overlay .btn { min-width: 120px; }
   @media (max-width: 900px) {
@@ -103,8 +105,8 @@
     <section class="card">
       <h2>Partie</h2>
       <dl class="rows">
-        <dt>Plateau</dt><dd id="infoSize">10-10</dd>
-        <dt>Niveau</dt><dd id="infoLevel">3</dd>
+        <dt>Plateau</dt><dd id="infoSize">8-8</dd>
+        <dt>Niveau</dt><dd id="infoLevel">1</dd>
         <dt>Bilan</dt><dd id="infoRecord">0 / 0 / 0</dd>
         <dt>Réflexion</dt><dd id="infoSearch">-</dd>
         <dt>Calcul</dt><dd id="infoMode">-</dd>
@@ -132,13 +134,14 @@
 
 <dialog id="help"><div class="d-head"><h2>Règles du Morpion</h2><button class="btn icon ghost" onclick="this.closest('dialog').close()" aria-label="Fermer">✕</button></div>
   <div class="d-body">
-    <p>Chaque joueur dépose à son tour une bille sur une case du damier. Tes billes sont <b>orange</b>, celles de l'ordinateur sont <b>grises</b>.</p>
+    <p>Chaque joueur dépose à son tour une bille sur une case du damier. Tes billes sont <b>grises</b>, celles de l'ordinateur sont <b>orange</b>, quel que soit celui qui commence.</p>
     <p>Chaque joueur gagne un point à chaque fois qu'il aligne <b>5 billes</b> de sa couleur, horizontalement, verticalement ou en diagonale. L'alignement est alors barré d'un trait rouge.</p>
     <p>Le jeu s'arrête (automatiquement) dès que les 2 joueurs ne peuvent plus progresser, mais pas avant ; joue donc les derniers coups... Le gagnant est celui qui a le plus de points.</p>
     <h3>Précisions</h3>
     <ul>
-      <li>Une bille peut servir à plusieurs alignements dans des directions différentes, mais jamais à deux alignements dans la même direction : 6 billes en ligne rapportent 1 point, 10 billes en ligne en rapportent 2.</li>
-      <li>La partie s'arrête quand plus aucun alignement de 5 n'est réalisable pour personne.</li>
+      <li>Une bille peut servir à plusieurs alignements dans des directions différentes. Dans la même direction, deux alignements ne peuvent partager que la bille de leur extrémité : 6, 7 ou 8 billes en ligne rapportent 1 point, 9 billes en ligne en rapportent 2.</li>
+      <li>La partie s'arrête quand plus aucun alignement de 5 n'est réalisable pour personne, même s'il reste des cases vides.</li>
+      <li>Plateaux 8-8, 10-10 ou 12-12, niveaux 1 à 5, comme dans le jeu d'origine. Quand l'ordinateur commence, sa première bille va toujours sur la même case, près du centre.</li>
     </ul>
     <h3>Les aides de cette version</h3>
     <ul>
@@ -155,7 +158,7 @@
   <div class="d-body">
     <div class="field"><span class="label" id="lblSize">Plateau</span>
       <div class="seg" data-setting="size" role="group" aria-labelledby="lblSize">
-        <button data-v="8">8-8</button><button data-v="10">10-10</button><button data-v="12">12-12</button><button data-v="15">15-15</button>
+        <button data-v="8">8-8</button><button data-v="10">10-10</button><button data-v="12">12-12</button>
       </div></div>
     <div class="field"><span class="label" id="lblLevel">Niveau de réflexion de l'ordinateur</span>
       <div class="seg" data-setting="level" role="group" aria-labelledby="lblLevel">
@@ -178,7 +181,7 @@
       <div class="seg" data-setting="confirm" role="group" aria-labelledby="lblConfirm">
         <button data-v="auto">Auto</button><button data-v="on">Toujours</button><button data-v="off">Jamais</button>
       </div>
-      <p class="hint-text">« Auto » : sur écran tactile, pour les plateaux 12-12 et 15-15.</p></div>
+      <p class="hint-text">« Auto » : sur écran tactile, pour le plateau 12-12.</p></div>
     <p class="hint-text">Le plateau et « Qui commence ? » s'appliquent tout de suite si la partie n'a pas commencé, sinon à la prochaine partie.</p>
   </div>
   <div class="d-foot"><button class="btn primary" onclick="this.closest('dialog').close()">OK</button></div></dialog>

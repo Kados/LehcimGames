@@ -1,7 +1,13 @@
 /*
  * Morpion (nouvelle version) - page logic.
  * Same game as ../game.js (Lehcim Noil's five-in-a-row scoring game), with the
- * original sprites and sounds, in the shared "nouvelle version" shell:
+ * original sprites and sounds, in the shared "nouvelle version" shell.
+ * Rules as in the original (checked under Wine): the player always has the grey
+ * marbles, the computer the orange ones whoever starts; boards 8-8 (default),
+ * 10-10, 12-12; levels 1 (default) to 5; the computer's first marble goes on
+ * (N/2-1, N/2-1); end messages "Bravo / Tu as gagné!", "Dommage / Tu as
+ * perdu...", "Peut mieux faire / Ex-aequo"; scored lines crossed out by a
+ * continuous red line. Additions of this version:
  *   - the computer searches in a Web Worker (ai-worker.js), with a fallback to
  *     the page when workers are unavailable (file://, old browsers, errors);
  *   - keyboard cursor, hover preview, confirm-tap on phones, last move,
@@ -21,17 +27,17 @@
   // Sprite rectangles in ../assets/sheet.png (same as ../game.js)
   var SPR = {
     tile: function (i, j) { return [400 + 20 * (i % 4), 20 * (j % 2), 20, 20]; },
-    marble: [null, [480, 0, 20, 20], [480, 20, 20, 20]],
+    marble: [null, [480, 20, 20, 20], [480, 0, 20, 20]],                     // 1 player grey, 2 computer orange
     digit: function (k) { return [400 + 20 * (k - 1), 40, 20, 20]; },
-    line: [[420, 60], [400, 60], [440, 60], [460, 60]],
     patience: [400, 80, 80, 20],
     thinking: [400, 100, 80, 20],
     pendulum: function (k) { return [400 + 40 * (k % 2), 120 + 40 * (k >> 1), 40, 40]; },
     bien: function (k) { return [480, 60 + 20 * k, 32, 20]; }
   };
   var POS = {
-    digit: [347, 14], patience: [320, 120], thinking: [320, 140], pendulum: [340, 160],
-    bien: [346, 250], score: [[0, 0], [341, 67], [379, 67]], turn: [[0, 0], [331, 82], [369, 82]]
+    digit: [370, 0], patience: [320, 120], thinking: [320, 140], pendulum: [340, 160],
+    // orange box (left) = computer, grey box (right) = player, as in the original
+    bien: [346, 250], score: [[0, 0], [380, 67], [342, 67]], turn: [[0, 0], [370, 82], [332, 82]]
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -43,9 +49,13 @@
 
   // ---------- Settings ----------
 
-  var S = { size: 10, level: 3, first: 1, threats: 1, speed: 650, confirm: 'auto' };
-  var STORE = 'lehcim.morpion.nv';
+  // defaults of the original: 8-8, level 1, the player starts
+  var S = { size: 8, level: 1, first: 1, threats: 1, speed: 650, confirm: 'auto' };
+  var SIZES = [8, 10, 12];
+  var STORE = 'lehcim.morpion.nv2';
   try { var saved = JSON.parse(localStorage.getItem(STORE)); if (saved) for (var k in S) if (saved[k] != null) S[k] = saved[k]; } catch (e) { /* ignore */ }
+  if (SIZES.indexOf(+S.size) < 0) S.size = 8;
+  if (!(+S.level >= 1 && +S.level <= 5)) S.level = 1;
   function saveSettings() { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) { /* ignore */ } }
   function loadStats() { try { return JSON.parse(localStorage.getItem(STORE + '.stats')) || {}; } catch (e) { return {}; } }
   function saveStats(st) { try { localStorage.setItem(STORE + '.stats', JSON.stringify(st)); } catch (e) { /* ignore */ } }
@@ -54,16 +64,16 @@
 
   var LEVEL_TEXT = [
     '',
-    'Niveau 1 : débutant, il joue un peu au hasard parmi les coups intéressants.',
-    'Niveau 2 : il regarde un coup à l\'avance, avec une petite part de hasard.',
-    'Niveau 3 : il calcule 3 demi-coups et suit les menaces de 4 jusqu\'au bout.',
-    'Niveau 4 : il calcule 5 demi-coups (jusqu\'à 1,5 s de réflexion).',
-    'Niveau 5 : le plus fort, il approfondit tant qu\'il a du temps (jusqu\'à 2,5 s).'
+    'Niveau 1 (0.5s. dans l\'original) : il ne calcule pas à l\'avance, mais prend toujours un point et bloque toujours un 4.',
+    'Niveau 2 (1s.) : il regarde un coup à l\'avance et suit les menaces de 4 qui en découlent.',
+    'Niveau 3 (12s) : il calcule 3 demi-coups et suit les menaces de 4 jusqu\'au bout.',
+    'Niveau 4 (25s) : il calcule 5 demi-coups (jusqu\'à 1,5 s de réflexion ici).',
+    'Niveau 5 (1min40s) : le plus fort, il approfondit tant qu\'il a du temps (jusqu\'à 2,5 s ici).'
   ];
 
   // ---------- State ----------
 
-  var game = null, N = 10, cs = 30, ox = 10, oy = 10;
+  var game = null, N = 8, cs = 36, ox = 16, oy = 16;
   var history = [];                 // {c, p, rec, pts}
   var turn = 1, starter = 1, thinking = false, ended = false, started = false, gaveUp = false;
   var lastMove = -1, hover = -1, cursor = -1, showCursor = false, sel = -1;
@@ -319,7 +329,7 @@
   function showStart() {
     showOverlay(
       '<h2>Morpion</h2>' +
-      '<p>Aligne 5 billes orange (en ligne, en colonne ou en diagonale) pour marquer un point. L\'ordinateur joue les grises. ' +
+      '<p>Aligne 5 billes grises (en ligne, en colonne ou en diagonale) pour marquer un point. L\'ordinateur joue les orange, même quand il commence. ' +
       'La partie continue tant que quelqu\'un peut encore marquer : celui qui a le plus de points gagne.</p>' +
       '<p>Clique ou touche une case libre, ou utilise les flèches et Entrée.</p>' +
       '<div class="btns"><button class="btn primary" id="ovPlay">Jouer</button><button class="btn" id="ovSettings">Réglages</button><button class="btn" id="ovRules">Règles</button></div>');
@@ -328,13 +338,16 @@
 
   function showSummary(res) {
     var a = game.score[1], b = game.score[2];
-    var title = gaveUp ? 'Partie abandonnée' : res === 'w' ? 'Bravo, tu as gagné !' : res === 'l' ? "L'ordinateur a gagné..." : 'Match nul !';
+    // the original's end messages (MessageBox text / title)
+    var title = gaveUp ? 'Partie abandonnée' : res === 'w' ? 'Bravo' : res === 'l' ? 'Dommage' : 'Peut mieux faire';
+    var sub = gaveUp ? '' : res === 'w' ? 'Tu as gagné!' : res === 'l' ? 'Tu as perdu...' : 'Ex-aequo';
     var dur = Math.round((Date.now() - startTime) / 1000);
     var r = loadStats()[S.level] || { w: 0, d: 0, l: 0 };
     var nMoves = history.length;
     showOverlay(
       '<h2>' + title + '</h2>' +
-      '<div class="big" aria-label="Score">' + a + ' - ' + b + '</div>' +
+      (sub ? '<p class="sub-title">' + sub + '</p>' : '') +
+      '<div class="big" aria-label="Score : toi ' + a + ', ordinateur ' + b + '">' + a + ' - ' + b + '</div>' +
       (gaveUp ? '' : '<p>Plus personne ne peut progresser : la partie est terminée.</p>') +
       '<div class="sum">' +
       '<span>Coups joués</span><b>' + nMoves + '</b>' +
@@ -356,7 +369,7 @@
     if (!started) { st.textContent = 'Prêt à jouer'; sub.textContent = ''; }
     else if (ended) {
       var a = game.score[1], b = game.score[2];
-      st.textContent = gaveUp ? 'Partie abandonnée' : a > b ? 'Tu as gagné !' : a < b ? "L'ordinateur a gagné" : 'Match nul';
+      st.textContent = gaveUp ? 'Partie abandonnée' : a > b ? 'Bravo, tu as gagné!' : a < b ? 'Dommage, tu as perdu...' : 'Ex-aequo';
       st.className = 'status ' + (!gaveUp && a > b ? 'good' : !gaveUp && a === b ? '' : 'bad');
       sub.textContent = 'Nouvelle partie pour rejouer.';
     } else if (thinking) { st.textContent = "L'ordinateur réfléchit..."; sub.textContent = 'Tu peux annuler ton coup en attendant.'; }
@@ -518,6 +531,22 @@
     g2.beginPath(); g2.arc(cx(c) + cs / 2, cy(c) + cs / 2, cs / 2 - (inset || 1.5), 0, Math.PI * 2); g2.stroke();
   }
 
+  // Red line through the 5 cells of window w: horizontal / vertical from the outer
+  // edge of the first cell to the outer edge of the last one through the centres,
+  // diagonal from corner to corner (like ../game.js).
+  function drawLine(w) {
+    var a = game.wCells[w * 5], b = game.wCells[w * 5 + 4], d = game.wDir[w];
+    var ax = cx(a), ay = cy(a), bx = cx(b), by = cy(b), lw = cs * 3 / 20;
+    g2.fillStyle = g2.strokeStyle = '#ff0000';
+    if (d === 0) { g2.fillRect(ax, ay + (cs - lw) / 2, bx - ax + cs, lw); return; }
+    if (d === 1) { g2.fillRect(ax + (cs - lw) / 2, ay, lw, by - ay + cs); return; }
+    g2.lineWidth = cs * 2.2 / 20; g2.lineCap = 'butt';
+    g2.beginPath();
+    if (d === 2) { g2.moveTo(ax, ay); g2.lineTo(bx + cs, by + cs); }   // "\"
+    else { g2.moveTo(ax + cs, ay); g2.lineTo(bx, by + cs); }            // "/"
+    g2.stroke();
+  }
+
   function draw(now) {
     g2.setTransform(scale, 0, 0, scale, 0, 0);
     g2.imageSmoothingEnabled = false;
@@ -541,20 +570,16 @@
       }
     }
     g2.imageSmoothingEnabled = true;
-    // scored lines (original red stroke sprites), new ones blink
+    // scored lines: one continuous pure red line, as in the original (3 px for
+    // 20 px cells, scaled with the cells); new ones blink
     for (var m = 0; m < game.lines.length; m++) {
-      var wi = game.lines[m].w, src = SPR.line[game.wDir[wi]], alpha = 1;
+      var wi = game.lines[m].w, alpha = 1;
       for (var f = 0; f < lineFlash.length; f++) if (lineFlash[f].w === wi) {
         var lt = now - lineFlash[f].t;
         if (lt < 900 && !reduced) alpha = 0.35 + 0.65 * Math.abs(Math.cos(lt / 900 * Math.PI * 3));
       }
       g2.globalAlpha = alpha;
-      g2.imageSmoothingEnabled = false;
-      for (var q = 0; q < 5; q++) {
-        c = game.wCells[wi * 5 + q];
-        g2.drawImage(sheet, src[0], src[1], 20, 20, cx(c), cy(c), cs, cs);
-      }
-      g2.imageSmoothingEnabled = true;
+      drawLine(wi);
       g2.globalAlpha = 1;
     }
     var playing = started && !ended;
@@ -577,7 +602,7 @@
     }
     // last move
     if (lastMove >= 0 && game.board[lastMove]) {
-      g2.strokeStyle = game.board[lastMove] === 2 ? 'rgba(255,236,150,0.95)' : 'rgba(255,255,255,0.75)';
+      g2.strokeStyle = game.board[lastMove] === 2 ? 'rgba(255,236,150,0.95)' : 'rgba(255,255,255,0.8)';
       g2.lineWidth = Math.max(1.5, cs * 0.07);
       g2.strokeRect(cx(lastMove) + 1, cy(lastMove) + 1, cs - 2, cs - 2);
     }
@@ -617,15 +642,17 @@
     if (full) {
       // the original panel: level digit, scores, whose turn, thinking pendulum
       blitS(SPR.digit(+S.level), POS.digit[0], POS.digit[1]);
-      g2.font = 'bold 13px "Times New Roman", Times, serif'; g2.textAlign = 'center'; g2.textBaseline = 'middle';
-      g2.fillStyle = '#6e3845';
+      g2.font = 'bold 13px Arial, Helvetica, sans-serif'; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+      g2.fillStyle = '#000';
       for (var p = 1; p <= 2; p++) g2.fillText(String(game.score[p]), POS.score[p][0], POS.score[p][1]);
       if (playing) blitS(SPR.marble[turn], POS.turn[turn][0], POS.turn[turn][1]);
       if (thinking) {
+        // like the original: the whole "Patience ! / Je réfléchis ..." block while it thinks
+        blitS(SPR.patience, POS.patience[0], POS.patience[1]);
         blitS(SPR.thinking, POS.thinking[0], POS.thinking[1]);
         blitS(SPR.pendulum(Math.floor((now - thinkStart) / 90) % 10), POS.pendulum[0], POS.pendulum[1]);
       }
-      if (now < patienceUntil) blitS(SPR.patience, POS.patience[0], POS.patience[1]);
+      else if (now < patienceUntil) blitS(SPR.patience, POS.patience[0], POS.patience[1]);
     }
     if (bienStart >= 0) {
       var fr = Math.floor((now - bienStart) / 110);

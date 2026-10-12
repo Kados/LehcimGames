@@ -2,11 +2,13 @@
  * Morpion (nouvelle version) - rules engine and computer player.
  * No DOM: loaded by the page, by ai-worker.js (importScripts) and by node.
  *
- * Same rules as the original port (../engine.js):
- *   board N x N, 0 = empty, 1 = player (orange), 2 = computer (grey);
+ * Same rules as the original game and its port (../engine.js):
+ *   board N x N, 0 = empty, 1 = player (grey), 2 = computer (orange);
  *   a completed 5-window of one colour scores 1 point and is crossed out in its
- *   direction (6 in a row = 1 point, 10 in a row = 2 points); the game ends when
- *   no 5-window is still achievable for anybody.
+ *   direction; in the same direction two lines may share only their end marble,
+ *   i.e. a window scores only if none of its 3 inner cells is already crossed
+ *   out in its direction (6 to 8 in a row = 1 point, 9 in a row = 2 points);
+ *   the game ends when no 5-window is still achievable for anybody.
  *
  * What is new compared with ../engine.js:
  *   - everything the search needs is INCREMENTAL: per-cell move-ordering values
@@ -77,8 +79,8 @@
       }
     }
     this.cnt = [null, new Uint8Array(W), new Uint8Array(W)];
-    this.usedCnt = new Uint8Array(W);
-    this.used = new Uint8Array(cells * 4);
+    this.usedCnt = new Uint8Array(W);      // crossed-out INNER cells (same direction) per window
+    this.used = new Uint8Array(cells * 4); // number of lines crossing out cell c in direction d
     this.score = [0, 0, 0];
     this.lines = [];
     this.moves = 0;
@@ -131,6 +133,9 @@
   };
 
   // Drops a marble of player p on cell c. Returns an undo record {c, p, scored:[w...]}.
+  // One marble can score several lines of the same direction (filling the middle
+  // of 9 in a row scores 0-4 and 4-8): windows are checked in order of start,
+  // each mark() updating usedCnt before the next one is tested.
   Game.prototype.play = function (c, p) {
     var cw = this.cellWins[c], cnt = this.cnt[p], i;
     for (i = 0; i < cw.length; i++) this.acc(cw[i], -1);
@@ -144,7 +149,7 @@
       var dw = this.cellDirWins[c * 4 + d];
       for (i = 0; i < dw.length; i++) {
         var w = dw[i];
-        if (cnt[w] === 5 && this.usedCnt[w] === 0) { this.mark(w, 1); scored.push(w); break; }
+        if (cnt[w] === 5 && this.usedCnt[w] === 0) { this.mark(w, 1); scored.push(w); }
       }
     }
     for (i = 0; i < scored.length; i++) this.lines.push({ w: scored[i], p: p });
@@ -165,19 +170,29 @@
   };
 
   // Crosses out (s = 1) or restores (s = -1) the 5 cells of window w in its direction.
+  // used[c*4+d] counts the lines crossing out cell c in direction d (2 on a shared
+  // end); usedCnt[v] counts the INNER cells (positions 1..3) of window v that are
+  // crossed out, as in ../engine.js. Only windows of direction d through the 5
+  // cells can change: their contributions are removed, the counters updated,
+  // then the contributions are added back.
   Game.prototype.mark = function (w, s) {
-    var d = this.wDir[w], i, j, x, dw, list = this.tmpW, nl = 0, id = ++this.stampId, st = this.stamp;
+    var d = this.wDir[w], wc = this.wCells, i, j, x, k, v, dw, before;
+    var list = this.tmpW, nl = 0, id = ++this.stampId, st = this.stamp;
     for (i = 0; i < 5; i++) {
-      dw = this.cellDirWins[this.wCells[w * 5 + i] * 4 + d];
+      dw = this.cellDirWins[wc[w * 5 + i] * 4 + d];
       for (j = 0; j < dw.length; j++) if (st[dw[j]] !== id) { st[dw[j]] = id; list[nl++] = dw[j]; }
     }
     for (j = 0; j < nl; j++) this.acc(list[j], -1);
     for (i = 0; i < 5; i++) {
-      x = this.wCells[w * 5 + i];
-      this.used[x * 4 + d] = s > 0 ? 1 : 0;
-      this.h1 ^= this.zu1[x * 4 + d]; this.h2 ^= this.zu2[x * 4 + d];
-      dw = this.cellDirWins[x * 4 + d];
-      for (j = 0; j < dw.length; j++) this.usedCnt[dw[j]] += s;
+      x = wc[w * 5 + i]; k = x * 4 + d; before = this.used[k];
+      this.used[k] += s;
+      if ((before === 0) === (this.used[k] === 0)) continue; // shared end: no change
+      this.h1 ^= this.zu1[k]; this.h2 ^= this.zu2[k];
+      dw = this.cellDirWins[k];
+      for (j = 0; j < dw.length; j++) {
+        v = dw[j];
+        if (wc[v * 5] !== x && wc[v * 5 + 4] !== x) this.usedCnt[v] += s;
+      }
     }
     for (j = 0; j < nl; j++) this.acc(list[j], 1);
   };
@@ -253,8 +268,8 @@
   // runs in a Web Worker, since the interface does not freeze any more).
   var LEVELS = [
     null,
-    { depth: 0, width: 8, time: 100, noise: 0.7 },
-    { depth: 1, width: 12, time: 300, noise: 0.08, q: 0 },
+    { depth: 0, width: 8, time: 100, noise: 0.15 },
+    { depth: 1, width: 12, time: 300, noise: 0, q: 2 },
     { depth: 3, width: 12, time: 500, noise: 0, q: 4 },
     { depth: 5, width: 12, time: 900, timeWorker: 1500, noise: 0, q: 6 },
     { depth: 12, width: 12, time: 1400, timeWorker: 2500, noise: 0, q: 8 }
@@ -373,13 +388,15 @@
     rnd = rnd || Math.random; opts = opts || {};
     var L = LEVELS[level] || LEVELS[3], n = this.n, t0 = now();
     var info = this.lastInfo = { depth: 0, nodes: 0, qnodes: 0, ms: 0, level: level };
-    if (this.moves === 0) {
-      var m = (n >> 1) - 1 + Math.floor(rnd() * 2), m2 = (n >> 1) - 1 + Math.floor(rnd() * 2);
-      return m2 * n + m;
+    if (this.moves === 0) { // first marble: always (N/2-1, N/2-1), as in the original
+      var m = (n >> 1) - 1;
+      return m * n + m;
     }
     var root = this.candidates(p, Math.max(L.width, 8));
     if (!root.length) return -1;
-    if (L.depth <= 1 && root[0].h >= 400000 && (L.depth > 0 || rnd() < 0.6)) return root[0].c;
+    // immediate point or urgent block: levels 1 and 2 take it at once (the
+    // original blocks at every level); deeper levels let the search decide
+    if (L.depth <= 1 && root[0].h >= 400000) return root[0].c;
     if (L.depth === 0) {
       var pick = 0;
       while (pick < root.length - 1 && rnd() < L.noise) pick++;
